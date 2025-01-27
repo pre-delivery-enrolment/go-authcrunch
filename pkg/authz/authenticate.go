@@ -209,8 +209,8 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 	}
 
 
-	if g.config.CountryOfResidence {
-		g.handleCountryOfResidence(r, ar)
+	if g.config.ExtCountryOfResidence {
+		g.handleExtCountryOfResidence(r, ar)
 	}
 
 	if g.config.RedirectWithJavascript {
@@ -335,7 +335,7 @@ func (g *Gatekeeper) handleAdditionalScopes(r *http.Request, ar *requests.Author
 
 }
 
-func (g *Gatekeeper) handleCountryOfResidence(r *http.Request, ar *requests.AuthorizationRequest) {
+func (g *Gatekeeper) handleExtCountryOfResidence(r *http.Request, ar *requests.AuthorizationRequest) {
 	if extCountryOfResidence := r.URL.Query().Get("ex-country_of_residence"); extCountryOfResidence != "" {
 		ar.Redirect.ExtCountryOfResidence = extCountryOfResidence
 	}
