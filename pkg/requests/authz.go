@@ -51,6 +51,7 @@ type RedirectResponse struct {
 	StatusCode       int    `json:"status_code,omitempty" xml:"status_code,omitempty" yaml:"status_code,omitempty"`
 	LoginHint        string `json:"login_hint,omitempty" xml:"login_hint,omitempty" yaml:"login_hint,omitempty"`
 	AdditionalScopes string `json:"additional_scopes,omitempty" xml:"additional_scopes,omitempty" yaml:"additional_scopes,omitempty"`
+	ExtCountryOfResidence string `json:"ext-country_of_residence,omitempty" xml:"ext-country_of_residence,omitempty" yaml:"ext-country_of_residence,omitempty"`
 }
 
 // NewAuthorizationRequest returns an instance of AuthorizationRequest.
