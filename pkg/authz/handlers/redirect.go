@@ -143,7 +143,7 @@ func configureRedirect(w http.ResponseWriter, r *http.Request, rr *requests.Auth
 		rr.Redirect.AuthURL = fmt.Sprintf("%s%sext-country_of_residence=%s", rr.Redirect.AuthURL, rr.Redirect.Separator, escapedExCountryOfResidence)
 	}
 
-	console.log("configureRedirect, Redirect URL: ", rr.Redirect.AuthURL)
+	Printf("configureRedirect, Redirect URL: %s", rr.Redirect.AuthURL)
 
 	return
 }

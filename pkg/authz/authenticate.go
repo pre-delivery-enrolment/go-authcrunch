@@ -220,8 +220,9 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 			zap.String("request_id", ar.ID),
 			zap.String("method", "js"),
 		)
-		console.log("RedirectWithJavascript!!!!: ", ar)
-		
+	
+		Printf("RedirectWithJavascript!!!!: %s", ar)
+
 		handlers.HandleJavascriptRedirect(w, r, ar)
 	} else {
 		g.logger.Debug(
@@ -230,7 +231,8 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 			zap.String("request_id", ar.ID),
 			zap.String("method", "location"),
 		)
-		console.log("RedirectWithLocationHeader!!!!: ", ar)
+		
+		Printf("RedirectWithLocationHeader!!!!:  %s", ar)
 	
 		handlers.HandleLocationHeaderRedirect(w, r, ar)
 	}
