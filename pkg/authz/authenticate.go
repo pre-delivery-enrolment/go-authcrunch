@@ -27,7 +27,8 @@ import (
 	"go.uber.org/zap"
 	"net/http"
 	"net/url"
-	"strings"
+	"strings",
+	"fmt"
 )
 
 var (
@@ -221,7 +222,7 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 			zap.String("method", "js"),
 		)
 	
-		Printf("RedirectWithJavascript!!!!: %s", ar)
+		fmt.Printf("RedirectWithJavascript!!!!: %s", ar)
 
 		handlers.HandleJavascriptRedirect(w, r, ar)
 	} else {
@@ -232,7 +233,7 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 			zap.String("method", "location"),
 		)
 		
-		Printf("RedirectWithLocationHeader!!!!:  %s", ar)
+		fmt.Printf("RedirectWithLocationHeader!!!!:  %s", ar)
 	
 		handlers.HandleLocationHeaderRedirect(w, r, ar)
 	}
