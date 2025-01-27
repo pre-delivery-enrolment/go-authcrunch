@@ -129,18 +129,21 @@ func configureRedirect(w http.ResponseWriter, r *http.Request, rr *requests.Auth
 		loginHint := rr.Redirect.LoginHint
 		escapedLoginHint := url.QueryEscape(loginHint)
 		rr.Redirect.AuthURL = fmt.Sprintf("%s%slogin_hint=%s", rr.Redirect.AuthURL, rr.Redirect.Separator, escapedLoginHint)
+		rr.Redirect.Separator = "&"
 	}
 
 	if len(rr.Redirect.AdditionalScopes) > 0 {
 		additionalScopes := rr.Redirect.AdditionalScopes
 		escapedAdditionalScopes := url.QueryEscape(additionalScopes)
 		rr.Redirect.AuthURL = fmt.Sprintf("%s%sadditional_scopes=%s", rr.Redirect.AuthURL, rr.Redirect.Separator, escapedAdditionalScopes)
+		rr.Redirect.Separator = "&"
 	}
 
 	if len(rr.Redirect.ExtCountryOfResidence) > 0 {
 		extCountryOfResidence := rr.Redirect.ExtCountryOfResidence
 		escapedExCountryOfResidence := url.QueryEscape(extCountryOfResidence)
 		rr.Redirect.AuthURL = fmt.Sprintf("%s%sext-country_of_residence=%s", rr.Redirect.AuthURL, rr.Redirect.Separator, escapedExCountryOfResidence)
+		rr.Redirect.Separator = "&"
 	}
 
 	fmt.Printf("configureRedirect, Redirect URL: %s", rr.Redirect.AuthURL)
