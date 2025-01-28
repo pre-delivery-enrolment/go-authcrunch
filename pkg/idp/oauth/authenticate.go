@@ -235,14 +235,12 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 		params.Set("login_hint", reqParamsLoginHint)
 	}
 
-	fmt.Printf("!!!!!!!!!!!!!!extCountryOfResidenceExists!!!!!!!!!!!!!: %s ", extCountryOfResidenceExists)
+	country := reqParams["redirect_url"][0].split("ext-country_of_residence=")[1]
 
-	fmt.Printf("!!!!!!!!!!!!!!extCountryOfResidence!!!!!!!!!!!!!: %s ", extCountryOfResidence)
+	fmt.Printf("!!!!!!!!!!!!!!country!!!!!!!!!!!!!: %s ", country)
 
-	fmt.Printf("!!!!!!!!!!!!!!reqParams!!!!!!!!!!!!!: %s ", reqParams)
-
-	if extCountryOfResidenceExists {
-		params.Set("ext-country_of_residence", extCountryOfResidence)
+	if (country && country != "") {
+		params.Set("ext-country_of_residence", country)
 	}
 
 	params.Set("client_id", b.config.ClientID)
