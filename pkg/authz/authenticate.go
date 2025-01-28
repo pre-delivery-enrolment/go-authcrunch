@@ -208,7 +208,6 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 		g.handleAdditionalScopes(r, ar)
 	}
 
-
 	if g.config.RedirectWithJavascript {
 		g.logger.Debug(
 			"redirecting unauthorized user",
@@ -216,7 +215,6 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 			zap.String("request_id", ar.ID),
 			zap.String("method", "js"),
 		)
-
 		handlers.HandleJavascriptRedirect(w, r, ar)
 	} else {
 		g.logger.Debug(
@@ -225,8 +223,6 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 			zap.String("request_id", ar.ID),
 			zap.String("method", "location"),
 		)
-		
-	
 		handlers.HandleLocationHeaderRedirect(w, r, ar)
 	}
 	return ar.Response.Error
