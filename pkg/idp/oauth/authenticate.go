@@ -30,7 +30,6 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
-	"fmt"
 )
 
 // Authenticate performs authentication.
@@ -232,8 +231,6 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 	}
 
 	country := strings.Split(reqParams["redirect_url"][0], "ext-country_of_residence=")[1]
-
-	fmt.Printf("!!!!!!!!!!!!!!country!!!!!!!!!!!!!: %s ", country)
 
 	if country != "" {
 		params.Set("ext-country_of_residence", country)

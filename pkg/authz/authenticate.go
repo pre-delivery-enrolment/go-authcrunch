@@ -28,7 +28,6 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
-	"fmt"
 )
 
 var (
@@ -210,10 +209,6 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 	}
 
 
-	if g.config.ExtCountryOfResidence {
-		g.handleExtCountryOfResidence(r, ar)
-	}
-
 	if g.config.RedirectWithJavascript {
 		g.logger.Debug(
 			"redirecting unauthorized user",
@@ -221,8 +216,6 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 			zap.String("request_id", ar.ID),
 			zap.String("method", "js"),
 		)
-	
-		fmt.Printf("RedirectWithJavascript!!!!: %s", ar)
 
 		handlers.HandleJavascriptRedirect(w, r, ar)
 	} else {
@@ -233,7 +226,6 @@ func (g *Gatekeeper) handleAuthorizeWithRedirect(w http.ResponseWriter, r *http.
 			zap.String("method", "location"),
 		)
 		
-		fmt.Printf("RedirectWithLocationHeader!!!!:  %s", ar)
 	
 		handlers.HandleLocationHeaderRedirect(w, r, ar)
 	}
@@ -340,10 +332,4 @@ func (g *Gatekeeper) handleAdditionalScopes(r *http.Request, ar *requests.Author
 		}
 	}
 
-}
-
-func (g *Gatekeeper) handleExtCountryOfResidence(r *http.Request, ar *requests.AuthorizationRequest) {
-	if extCountryOfResidence := r.URL.Query().Get("ex-country_of_residence"); extCountryOfResidence != "" {
-		ar.Redirect.ExtCountryOfResidence = extCountryOfResidence
-	}
 }

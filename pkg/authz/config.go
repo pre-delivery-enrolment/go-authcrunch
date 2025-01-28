@@ -65,8 +65,6 @@ type PolicyConfig struct {
 	LoginHintValidators []string `json:"login_hint_validators,omitempty" xml:"login_hint_validators,omitempty" yaml:"login_hint_validators,omitempty"`
 	// Allow to append scopes that come from the query parameter 'additionalScopes'
 	AdditionalScopes bool `json:"additional_scopes,omitempty" xml:"additional_scopes,omitempty" yaml:"additional_scopes,omitempty"`
-	// Allow to append country of residence
-	ExtCountryOfResidence bool `json:"ext-country_of_residence,omitempty" xml:"ext-country_of_residence,omitempty" yaml:"ext-country_of_residence,omitempty"`
 	// Holds raw crypto configuration.
 	cryptoRawConfigs []string
 	// Holds raw identity provider configuration.
