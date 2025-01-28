@@ -235,7 +235,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 
 	fmt.Printf("!!!!!!!!!!!!!!country!!!!!!!!!!!!!: %s ", country)
 
-	if (country && country != "") {
+	if country != "" {
 		params.Set("ext-country_of_residence", country)
 	}
 
