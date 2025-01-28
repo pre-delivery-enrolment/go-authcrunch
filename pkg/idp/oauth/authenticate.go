@@ -30,6 +30,7 @@ import (
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
+	"fmt"
 )
 
 // Authenticate performs authentication.
@@ -233,6 +234,12 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 	if loginHintExists {
 		params.Set("login_hint", reqParamsLoginHint)
 	}
+
+	jmt.Printf("!!!!!!!!!!!!!!extCountryOfResidenceExists!!!!!!!!!!!!!: %s ", extCountryOfResidenceExists)
+
+	jmt.Printf("!!!!!!!!!!!!!!extCountryOfResidence!!!!!!!!!!!!!: %s ", extCountryOfResidence)
+
+	jmt.Printf("!!!!!!!!!!!!!!reqParams!!!!!!!!!!!!!: %s ", reqParams)
 
 	if extCountryOfResidenceExists {
 		params.Set("ext-country_of_residence", extCountryOfResidence)
