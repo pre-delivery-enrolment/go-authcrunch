@@ -235,11 +235,11 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 		params.Set("login_hint", reqParamsLoginHint)
 	}
 
-	jmt.Printf("!!!!!!!!!!!!!!extCountryOfResidenceExists!!!!!!!!!!!!!: %s ", extCountryOfResidenceExists)
+	fmt.Printf("!!!!!!!!!!!!!!extCountryOfResidenceExists!!!!!!!!!!!!!: %s ", extCountryOfResidenceExists)
 
-	jmt.Printf("!!!!!!!!!!!!!!extCountryOfResidence!!!!!!!!!!!!!: %s ", extCountryOfResidence)
+	fmt.Printf("!!!!!!!!!!!!!!extCountryOfResidence!!!!!!!!!!!!!: %s ", extCountryOfResidence)
 
-	jmt.Printf("!!!!!!!!!!!!!!reqParams!!!!!!!!!!!!!: %s ", reqParams)
+	fmt.Printf("!!!!!!!!!!!!!!reqParams!!!!!!!!!!!!!: %s ", reqParams)
 
 	if extCountryOfResidenceExists {
 		params.Set("ext-country_of_residence", extCountryOfResidence)
