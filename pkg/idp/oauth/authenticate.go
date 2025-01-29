@@ -230,12 +230,14 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 		params.Set("login_hint", reqParamsLoginHint)
 	}
 
-	country := strings.Split(reqParams["redirect_url"][0], "ext-country_of_residence=")[1]
+	if strings.Contains(reqParams["redirect_url"][0], "ext-country_of_residence=") {
+		country := strings.Split(reqParams["redirect_url"][0], "ext-country_of_residence=")[1]
 
-	if country != "" {
-		params.Set("ext-country_of_residence", country)
+		if country != "" {
+			params.Set("ext-country_of_residence", country)
+		}
 	}
-
+	
 	params.Set("client_id", b.config.ClientID)
 
 	r.Response.RedirectURL = b.authorizationURL + "?" + params.Encode()
