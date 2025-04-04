@@ -19,6 +19,7 @@ const (
 	ErrAddMfaToken    StandardError = "failed adding MFA token: %v"
 	ErrDeleteMfaToken StandardError = "failed deleting MFA token %q: %v"
 	ErrGetMfaTokens   StandardError = "failed getting MFA tokens: %v"
+	ErrGetMfaToken    StandardError = "failed getting MFA token: %v"
 
 	ErrDuplicateMfaTokenSecret  StandardError = "duplicate MFA token secret"
 	ErrDuplicateMfaTokenComment StandardError = "duplicate MFA token comment"
@@ -51,7 +52,9 @@ const (
 	ErrWebAuthnRegisterPublicKeyAlgorithmNotFound        StandardError = "webauthn register attestation object auth data credential public key algorithm not found"
 	ErrWebAuthnRegisterPublicKeyCurveUnsupported         StandardError = "webauthn register attestation object auth data credential public key curve_type %v is unsupported"
 	ErrWebAuthnRegisterPublicKeyTypeAlgorithmUnsupported StandardError = "webauthn register attestation object auth data credential public key type %q and algorithm %q are unsupported"
+	ErrWebAuthnRegisterPublicKeyParamNotFound            StandardError = "webauthn register attestation object auth data credential public key has type %q and algorithm %q, but %q not found"
 	ErrWebAuthnRegisterPublicKeyCurveCoord               StandardError = "webauthn register attestation object auth data credential public key curve %v coordinate error: %v"
+	ErrWebAuthnRegisterPublicKeyMaterial                 StandardError = "webauthn register attestation object auth data credential public key %q error: %v"
 	ErrWebAuthnRequest                                   StandardError = "webauthn request failed: %v"
 	ErrWebAuthnVerifyRequest                             StandardError = "webauthn authentication request failed: %v"
 )

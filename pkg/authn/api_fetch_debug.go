@@ -1,4 +1,4 @@
-// Copyright 2022 Paul Greenberg greenpau@outlook.com
+// Copyright 2024 Paul Greenberg greenpau@outlook.com
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -16,28 +16,33 @@ package authn
 
 import (
 	"context"
-	"fmt"
-	"github.com/greenpau/go-authcrunch/pkg/authn/enums/operator"
-	"github.com/greenpau/go-authcrunch/pkg/identity"
+	"net/http"
+
 	"github.com/greenpau/go-authcrunch/pkg/ids"
 	"github.com/greenpau/go-authcrunch/pkg/requests"
 	"github.com/greenpau/go-authcrunch/pkg/user"
-	"net/http"
 )
 
-func (p *Portal) handleHTTPGeneralSettings(
-	ctx context.Context, r *http.Request, rr *requests.Request,
-	usr *user.User, store ids.IdentityStore, data map[string]interface{},
-) error {
-	data["view"] = "general"
-	err := store.Request(operator.GetUser, rr)
-	if err != nil {
-		attachFailStatus(data, fmt.Sprintf("%v", err))
-		return nil
-	}
-	user := rr.Response.Payload.(*identity.User)
-	data["metadata"] = user.GetMetadata()
+// FetchDebug fetches debug information.
+func (p *Portal) FetchDebug(
+	ctx context.Context,
+	w http.ResponseWriter,
+	r *http.Request,
+	rr *requests.Request,
+	parsedUser *user.User,
+	resp map[string]interface{},
+	usr *user.User,
+	backend ids.IdentityStore) error {
 
-	attachSuccessStatus(data, "User identity has been discovered")
-	return nil
+	entry := make(map[string]interface{})
+	database := map[string]interface{}{
+		"name":   "localdb",
+		"host":   "localhost",
+		"port":   5432,
+		"engine": "postgresql",
+	}
+	entry["version"] = "1.0.0"
+	entry["database"] = database
+	resp["entry"] = entry
+	return handleAPIProfileResponse(w, rr, http.StatusOK, resp)
 }

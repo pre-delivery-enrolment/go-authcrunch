@@ -16,6 +16,9 @@ package authn
 
 import (
 	"context"
+	"os"
+	"sort"
+
 	"github.com/greenpau/go-authcrunch/pkg/acl"
 	"github.com/greenpau/go-authcrunch/pkg/authn/cache"
 	"github.com/greenpau/go-authcrunch/pkg/authn/cookie"
@@ -31,19 +34,18 @@ import (
 	"github.com/greenpau/go-authcrunch/pkg/registry"
 	"github.com/greenpau/go-authcrunch/pkg/sso"
 	cfgutil "github.com/greenpau/go-authcrunch/pkg/util/cfg"
-	"sort"
 
 	"fmt"
-	"github.com/google/uuid"
-	"go.uber.org/zap"
 	"path"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 const (
-	defaultPortalACLCondition = "match roles authp/admin authp/user authp/guest superuser superadmin"
-	defaultPortalACLAction    = "allow stop"
+	defaultPortalACLAction = "allow stop"
 )
 
 // Portal is an authentication portal.
@@ -187,6 +189,16 @@ func (p *Portal) configure() error {
 	if err := p.configureUserTransformer(); err != nil {
 		return err
 	}
+
+	if len(p.config.TrustedLogoutRedirectURIConfigs) > 0 {
+		p.logger.Debug(
+			"Logout redirect URI configuration",
+			zap.Any("trusted_logout_redirect_uri_configs", p.config.TrustedLogoutRedirectURIConfigs),
+		)
+	} else {
+		p.logger.Debug("Logout redirect URI configuration not present")
+	}
+
 	return nil
 }
 
@@ -205,6 +217,7 @@ func (p *Portal) configureEssentials() error {
 	p.logger.Debug(
 		"Configuring cookie parameters",
 		zap.String("portal_name", p.config.Name),
+		zap.Any("cookie_config", p.config.CookieConfig),
 	)
 
 	c, err := cookie.NewFactory(p.config.CookieConfig)
@@ -212,18 +225,78 @@ func (p *Portal) configureEssentials() error {
 		return err
 	}
 	p.cookie = c
+
+	p.logger.Debug(
+		"Configuring default portal user roles",
+		zap.String("portal_name", p.config.Name),
+		zap.Any("portal_admin_roles", p.config.PortalAdminRoles),
+		zap.Any("portal_user_roles", p.config.PortalUserRoles),
+		zap.Any("portal_guest_roles", p.config.PortalGuestRoles),
+		zap.Any("portal_admin_role_patterns", p.config.PortalAdminRolePatterns),
+		zap.Any("portal_user_role_patterns", p.config.PortalUserRolePatterns),
+		zap.Any("portal_guest_role_patterns", p.config.PortalGuestRolePatterns),
+	)
+
 	return nil
 }
 
 func (p *Portal) configureCryptoKeyStore() error {
 	if len(p.config.AccessListConfigs) == 0 {
-		p.config.AccessListConfigs = []*acl.RuleConfiguration{
-			{
-				// Admin users can access everything.
-				Conditions: []string{defaultPortalACLCondition},
+		defaultACLConfig := []*acl.RuleConfiguration{}
+
+		// Configure ACL by role names
+		for roleName := range p.config.PortalAdminRoles {
+			aclConfig := &acl.RuleConfiguration{
+				Comment:    "admin role name match",
+				Conditions: []string{"match role " + roleName},
 				Action:     defaultPortalACLAction,
-			},
+			}
+			defaultACLConfig = append(defaultACLConfig, aclConfig)
 		}
+		for roleName := range p.config.PortalUserRoles {
+			aclConfig := &acl.RuleConfiguration{
+				Comment:    "user role name match",
+				Conditions: []string{"match role " + roleName},
+				Action:     defaultPortalACLAction,
+			}
+			defaultACLConfig = append(defaultACLConfig, aclConfig)
+		}
+		for roleName := range p.config.PortalGuestRoles {
+			aclConfig := &acl.RuleConfiguration{
+				Comment:    "guest role name match",
+				Conditions: []string{"match role " + roleName},
+				Action:     defaultPortalACLAction,
+			}
+			defaultACLConfig = append(defaultACLConfig, aclConfig)
+		}
+
+		// Configure ACL by role patterns
+		for _, roleNameRegex := range p.config.adminRolePatterns {
+			aclConfig := &acl.RuleConfiguration{
+				Comment:    "admin role name pattern match",
+				Conditions: []string{"regex match role " + roleNameRegex.String()},
+				Action:     defaultPortalACLAction,
+			}
+			defaultACLConfig = append(defaultACLConfig, aclConfig)
+		}
+		for _, roleNameRegex := range p.config.userRolePatterns {
+			aclConfig := &acl.RuleConfiguration{
+				Comment:    "user role name pattern match",
+				Conditions: []string{"regex match role " + roleNameRegex.String()},
+				Action:     defaultPortalACLAction,
+			}
+			defaultACLConfig = append(defaultACLConfig, aclConfig)
+		}
+		for _, roleNameRegex := range p.config.guestRolePatterns {
+			aclConfig := &acl.RuleConfiguration{
+				Comment:    "guest role name pattern match",
+				Conditions: []string{"regex match role " + roleNameRegex.String()},
+				Action:     defaultPortalACLAction,
+			}
+			defaultACLConfig = append(defaultACLConfig, aclConfig)
+		}
+
+		p.config.AccessListConfigs = defaultACLConfig
 	}
 
 	p.logger.Debug(
@@ -483,6 +556,27 @@ func (p *Portal) configureUserInterface() error {
 		p.ui.CustomJsPath = p.config.UI.CustomJsPath
 		if err := ui.StaticAssets.AddAsset("assets/js/custom.js", "application/javascript", p.config.UI.CustomJsPath); err != nil {
 			return errors.ErrStaticAssetAddFailed.WithArgs("assets/js/custom.js", "application/javascript", p.config.UI.CustomJsPath, p.config.Name, err)
+		}
+	}
+
+	if p.config.UI.CustomHTMLHeaderPath != "" {
+		b, err := os.ReadFile(p.config.UI.CustomHTMLHeaderPath)
+		if err != nil {
+			return errors.ErrCustomHTMLHeaderNotReadable.WithArgs(p.config.UI.CustomHTMLHeaderPath, p.config.Name, err)
+		}
+		for k, v := range ui.PageTemplates {
+			headIndex := strings.Index(v, "<meta name=\"description\"")
+			if headIndex < 1 {
+				continue
+			}
+			v = v[:headIndex] + string(b) + v[headIndex:]
+			ui.PageTemplates[k] = v
+		}
+	}
+
+	for _, staticAsset := range p.config.UI.StaticAssets {
+		if err := ui.StaticAssets.AddAsset(staticAsset.Path, staticAsset.ContentType, staticAsset.FsPath); err != nil {
+			return errors.ErrStaticAssetAddFailed.WithArgs(staticAsset.Path, staticAsset.ContentType, staticAsset.FsPath, p.config.Name, err)
 		}
 	}
 

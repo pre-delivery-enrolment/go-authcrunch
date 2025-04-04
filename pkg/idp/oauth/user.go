@@ -28,6 +28,10 @@ import (
 	"strings"
 )
 
+type discordMember struct {
+	Roles []string `json:"roles"`
+}
+
 type userData struct {
 	Groups []string `json:"groups,omitempty"`
 }
@@ -123,15 +127,19 @@ func (b *IdentityProvider) fetchClaims(tokenData map[string]interface{}) (map[st
 	switch b.config.Driver {
 	case "github":
 		userURL = "https://api.github.com/user"
+	case "linkedin":
+		userURL = "https://api.linkedin.com/v2/userinfo"
 	case "gitlab":
 		userURL = b.userInfoURL
 	case "facebook":
 		userURL = "https://graph.facebook.com/me"
+	case "discord":
+		userURL = "https://discord.com/api/v10/users/@me"
 	}
 
 	// Setup http request for the URL.
 	switch b.config.Driver {
-	case "github", "gitlab":
+	case "github", "gitlab", "discord", "linkedin":
 		req, err = http.NewRequest("GET", userURL, nil)
 		if err != nil {
 			return nil, err
@@ -159,7 +167,7 @@ func (b *IdentityProvider) fetchClaims(tokenData map[string]interface{}) (map[st
 	switch b.config.Driver {
 	case "github":
 		req.Header.Add("Authorization", "token "+tokenString)
-	case "gitlab":
+	case "gitlab", "discord", "linkedin":
 		req.Header.Add("Authorization", "Bearer "+tokenString)
 	}
 
@@ -187,6 +195,10 @@ func (b *IdentityProvider) fetchClaims(tokenData map[string]interface{}) (map[st
 	}
 
 	switch b.config.Driver {
+	case "linkedin":
+		if _, exists := data["sub"]; !exists {
+			return nil, fmt.Errorf("failed obtaining user profile with OAuth 2.0 access token, profile field not found")
+		}
 	case "gitlab":
 		if _, exists := data["profile"]; !exists {
 			return nil, fmt.Errorf("failed obtaining user profile with OAuth 2.0 access token, profile field not found")
@@ -197,6 +209,10 @@ func (b *IdentityProvider) fetchClaims(tokenData map[string]interface{}) (map[st
 		}
 		if _, exists := data["login"]; !exists {
 			return nil, fmt.Errorf("failed obtaining user profile with OAuth 2.0 access token, login field not found")
+		}
+	case "discord":
+		if _, exists := data["id"]; !exists {
+			return nil, fmt.Errorf("failed obtaining user profile with OAuth 2.0 access token, id field not found")
 		}
 	case "facebook":
 		if _, exists := data["error"]; exists {
@@ -326,16 +342,171 @@ func (b *IdentityProvider) fetchClaims(tokenData map[string]interface{}) (map[st
 			zap.String("identity_provider_name", b.config.Name),
 			zap.Any("data", m),
 		)
+	case "discord":
+		m["sub"] = "discord.com/" + data["id"].(string)
+		m["name"] = data["username"]
+		m["picture"] = fmt.Sprintf("https://cdn.discordapp.com/avatars/%s/%s.png", data["id"], data["avatar"])
+		if _, exists := data["email"]; exists {
+			m["email"] = data["email"]
+		}
+		if b.ScopeExists("guilds") {
+			userData, err := b.fetchDiscordGuilds(tokenString)
+			if err != nil {
+				b.logger.Error(
+					"Failed extracting user guild data",
+					zap.String("identity_provider_name", b.config.Name),
+					zap.Error(err),
+				)
+			} else {
+				userGroups = append(userGroups, userData.Groups...)
+			}
+		}
+		b.logger.Debug(
+			"Extracted UserInfo endpoint data",
+			zap.String("identity_provider_name", b.config.Name),
+			zap.Any("inputted", data),
+			zap.Any("extracted", m),
+		)
 	case "facebook":
 		if v, exists := data["email"]; exists {
 			m["email"] = v
 		}
 		m["sub"] = data["id"]
 		m["name"] = data["name"]
+	case "linkedin":
+		for _, k := range []string{"name", "picture", "sub", "email"} {
+			if _, exists := data[k]; !exists {
+				continue
+			}
+			switch v := data[k].(type) {
+			case string:
+				m[k] = v
+			}
+		}
 	}
 
 	if len(userGroups) > 0 {
 		m["groups"] = userGroups
 	}
 	return m, nil
+}
+
+func (b *IdentityProvider) fetchDiscordGuilds(authToken string) (*userData, error) {
+	var req *http.Request
+	reqURL := "https://discord.com/api/v10/users/@me/guilds"
+	data := &userData{}
+
+	// Create new http client instance.
+	cli, err := b.newBrowser()
+	if err != nil {
+		return nil, err
+	}
+
+	req, err = http.NewRequest("GET", reqURL, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	req.Header.Add("Authorization", "Bearer "+authToken)
+
+	// Fetch data from the URL.
+	resp, err := cli.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	respBody, err := ioutil.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		return nil, err
+	}
+
+	b.logger.Debug(
+		"Received user guild infomation",
+		zap.String("url", reqURL),
+		zap.Any("body", respBody),
+	)
+
+	guilds := []map[string]interface{}{}
+	if err := json.Unmarshal(respBody, &guilds); err != nil {
+		return nil, err
+	}
+
+	for _, guild := range guilds {
+		guildID := guild["id"].(string)
+		// Exclude org from processing if it does not match org filters.
+		included := false
+		for _, rp := range b.userGroupFilters {
+			if rp.MatchString(guildID) {
+				included = true
+				break
+			}
+		}
+		if !included {
+			continue
+		}
+
+		b.logger.Debug(
+			"Checking Guild Permissions",
+			zap.String("guildName", guild["name"].(string)),
+		)
+
+		// Check if the user has special permissions
+		if _, exists := guild["permissions"]; exists {
+			// Parses to int64 for 32-bit system support
+			perm, err := strconv.ParseInt(guild["permissions"].(string), 10, 64)
+			if err != nil {
+				b.logger.Debug(
+					"Error converting Guild permissions to integer",
+					zap.Any("error", err),
+				)
+			} else if (perm & 0x08) == 0x08 { // Check for admin privileges
+				data.Groups = append(data.Groups, fmt.Sprintf("discord.com/%s/admins", guildID))
+			}
+		}
+
+		data.Groups = append(data.Groups, fmt.Sprintf("discord.com/%s/members", guildID))
+		// Fetch roles information for the guild
+		if b.ScopeExists("guilds.members.read") {
+			reqURL = fmt.Sprintf("https://discord.com/api/v10/users/@me/guilds/%s/member", guildID)
+			req, err = http.NewRequest("GET", reqURL, nil)
+			if err != nil {
+				return nil, err
+			}
+			req.Header.Set("Accept", "application/json")
+			req.Header.Add("Authorization", "Bearer "+authToken)
+
+			resp, err = cli.Do(req)
+			if err != nil {
+				return nil, err
+			}
+
+			respBody, err = ioutil.ReadAll(resp.Body)
+			resp.Body.Close()
+			if err != nil {
+				return nil, err
+			}
+
+			var memberData discordMember
+			if err := json.Unmarshal(respBody, &memberData); err != nil {
+				b.logger.Debug(
+					"Guild Roles request failed",
+					zap.Any("response", respBody),
+					zap.Any("error", err),
+				)
+				return nil, err
+			}
+
+			for _, roleID := range memberData.Roles {
+				data.Groups = append(data.Groups, fmt.Sprintf("discord.com/%s/role/%s", guildID, roleID))
+			}
+		}
+
+		b.logger.Debug(
+			"Parsed additional discord user data",
+			zap.String("url", reqURL),
+			zap.Any("data", data),
+		)
+	}
+
+	return data, nil
 }
