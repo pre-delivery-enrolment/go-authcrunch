@@ -17,16 +17,18 @@ package identity
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/greenpau/go-authcrunch/internal/utils"
-	"github.com/greenpau/go-authcrunch/pkg/errors"
-	"github.com/greenpau/go-authcrunch/pkg/requests"
-	"github.com/greenpau/versioned"
-	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/greenpau/go-authcrunch/pkg/errors"
+	"github.com/greenpau/go-authcrunch/pkg/requests"
+	"github.com/greenpau/go-authcrunch/pkg/util"
+	fileutil "github.com/greenpau/go-authcrunch/pkg/util/file"
+	"github.com/greenpau/versioned"
 )
 
 var (
@@ -57,13 +59,15 @@ var (
 	}
 )
 
+var apiKeyRegexPattern = regexp.MustCompile(`^[A-Za-z0-9]{64,72}$`)
+
 func init() {
 	app = versioned.NewPackageManager("authdb")
 	app.Description = "authdb"
 	app.Documentation = "https://github.com/greenpau/go-authcrunch"
-	app.SetVersion(appVersion, "1.0.35")
+	app.SetVersion(appVersion, "1.1.7")
 	app.SetGitBranch(gitBranch, "main")
-	app.SetGitCommit(gitCommit, "v1.0.35")
+	app.SetGitCommit(gitCommit, "v1.1.6-1-g25b3ec7")
 	app.SetBuildUser(buildUser, "")
 	app.SetBuildDate(buildDate, "")
 }
@@ -108,6 +112,7 @@ type Database struct {
 	refID           map[string]*User
 	refAPIKey       map[string]*User
 	path            string
+	inMemory        bool
 }
 
 // NewDatabase return an instance of Database.
@@ -123,14 +128,17 @@ func NewDatabase(fp string) (*Database, error) {
 		refID:           make(map[string]*User),
 		refEmailAddress: make(map[string]*User),
 		refAPIKey:       make(map[string]*User),
+		inMemory:        fp == ":memory:",
 	}
 	fileInfo, err := os.Stat(fp)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return nil, errors.ErrNewDatabase.WithArgs(fp, err)
-		}
-		if err := os.MkdirAll(filepath.Dir(fp), 0700); err != nil {
-			return nil, errors.ErrNewDatabase.WithArgs(fp, err)
+		if !db.inMemory {
+			if !os.IsNotExist(err) {
+				return nil, errors.ErrNewDatabase.WithArgs(fp, err)
+			}
+			if err := os.MkdirAll(filepath.Dir(fp), 0700); err != nil {
+				return nil, errors.ErrNewDatabase.WithArgs(fp, err)
+			}
 		}
 		db.Version = app.Version
 		db.enforceDefaultPolicy()
@@ -141,7 +149,7 @@ func NewDatabase(fp string) (*Database, error) {
 		if fileInfo.IsDir() {
 			return nil, errors.ErrNewDatabase.WithArgs(fp, "path points to a directory")
 		}
-		b, err := utils.ReadFileBytes(fp)
+		b, err := fileutil.ReadFileBytes(fp)
 		if err != nil {
 			return nil, errors.ErrNewDatabase.WithArgs(fp, err)
 		}
@@ -241,7 +249,7 @@ func (db *Database) checkUserPolicyCompliance(s string) error {
 
 func (db *Database) checkPasswordPolicyCompliance(s string) error {
 	if len(s) > db.Policy.Password.MaxLength || len(s) < db.Policy.Password.MinLength {
-		return errors.ErrPasswordPolicyCompliance
+		return errors.ErrPasswordPolicyCompliance.WithArgs(fmt.Errorf("password length is %d characters", len(s)))
 	}
 	return nil
 }
@@ -477,11 +485,14 @@ func (db *Database) Copy(fp string) error {
 func (db *Database) commit() error {
 	db.Revision++
 	db.LastModified = time.Now().UTC()
+	if db.inMemory {
+		return nil
+	}
 	data, err := json.MarshalIndent(db, "", "  ")
 	if err != nil {
 		return errors.ErrDatabaseCommit.WithArgs(db.path, err)
 	}
-	if err := ioutil.WriteFile(db.path, []byte(data), 0600); err != nil {
+	if err := os.WriteFile(db.path, []byte(data), 0600); err != nil {
 		return errors.ErrDatabaseCommit.WithArgs(db.path, err)
 	}
 	return nil
@@ -533,12 +544,40 @@ func (db *Database) GetPublicKeys(r *requests.Request) error {
 			continue
 		}
 		if k.Disabled {
-			continue
+			if !r.Key.IncludeAll {
+				continue
+			}
 		}
 		bundle.Add(k)
 	}
 	r.Response.Payload = bundle
 	return nil
+}
+
+// GetPublicKey returns a public key associated with a user.
+func (db *Database) GetPublicKey(r *requests.Request) error {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	user, err := db.validateUserIdentity(r.User.Username, r.User.Email)
+	if err != nil {
+		return errors.ErrGetPublicKey.WithArgs(r.Key.Usage, err)
+	}
+	for _, k := range user.PublicKeys {
+		if k.Usage != r.Key.Usage {
+			continue
+		}
+		if k.Disabled {
+			if !r.Key.IncludeAll {
+				continue
+			}
+		}
+		if k.ID != r.Key.ID {
+			continue
+		}
+		r.Response.Payload = k
+		return nil
+	}
+	return errors.ErrGetPublicKey.WithArgs(r.Key.Usage, "not found")
 }
 
 // DeletePublicKey deletes a public key associated with a user by key id.
@@ -566,7 +605,24 @@ func (db *Database) AddAPIKey(r *requests.Request) error {
 	if err != nil {
 		return errors.ErrAddAPIKey.WithArgs(r.Key.Usage, err)
 	}
-	s := GetRandomStringFromRange(72, 96)
+
+	s := r.Key.Payload
+	if s == "" {
+		s = util.GetRandomString(72)
+	}
+
+	if len(s) < 64 {
+		return errors.ErrAddAPIKey.WithArgs(r.Key.Usage, "the key is too short")
+	}
+
+	if len(s) > 72 {
+		return errors.ErrAddAPIKey.WithArgs(r.Key.Usage, "the key is too long")
+	}
+
+	if !apiKeyRegexPattern.MatchString(s) {
+		return errors.ErrAddAPIKey.WithArgs(r.Key.Usage, "the key is non compliant")
+	}
+
 	failCount := 0
 	for {
 		hk, err := NewPassword(s)
@@ -635,6 +691,30 @@ func (db *Database) GetAPIKeys(r *requests.Request) error {
 	}
 	r.Response.Payload = bundle
 	return nil
+}
+
+// GetAPIKey returns an API key associated with a user.
+func (db *Database) GetAPIKey(r *requests.Request) error {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	user, err := db.validateUserIdentity(r.User.Username, r.User.Email)
+	if err != nil {
+		return errors.ErrGetAPIKey.WithArgs(r.Key.Usage, err)
+	}
+	for _, k := range user.APIKeys {
+		if k.Usage != r.Key.Usage {
+			continue
+		}
+		if k.Disabled {
+			continue
+		}
+		if k.ID != r.Key.ID {
+			continue
+		}
+		r.Response.Payload = k
+		return nil
+	}
+	return errors.ErrGetAPIKey.WithArgs(r.Key.Usage, "not found")
 }
 
 // ChangeUserPassword change user password.
@@ -755,12 +835,37 @@ func (db *Database) GetMfaTokens(r *requests.Request) error {
 	bundle := NewMfaTokenBundle()
 	for _, token := range user.MfaTokens {
 		if token.Disabled {
-			continue
+			if !r.MfaToken.IncludeAll {
+				continue
+			}
 		}
 		bundle.Add(token)
 	}
 	r.Response.Payload = bundle
 	return nil
+}
+
+// GetMfaToken returns a single MFA token associated with a user.
+func (db *Database) GetMfaToken(r *requests.Request) error {
+	db.mu.RLock()
+	defer db.mu.RUnlock()
+	user, err := db.validateUserIdentity(r.User.Username, r.User.Email)
+	if err != nil {
+		return errors.ErrGetMfaTokens.WithArgs(err)
+	}
+	for _, token := range user.MfaTokens {
+		if token.Disabled {
+			if !r.MfaToken.IncludeAll {
+				continue
+			}
+		}
+		if token.ID != r.MfaToken.ID {
+			continue
+		}
+		r.Response.Payload = token
+		return nil
+	}
+	return errors.ErrGetMfaToken.WithArgs("not found")
 }
 
 // DeleteMfaToken deletes MFA token associated with a user by token id.
@@ -863,15 +968,15 @@ func (db *Database) GetPasswordPolicyRegex() string {
 func (db *Database) UserExists(username, emailAddress string) (bool, error) {
 	username = strings.ToLower(username)
 	emailAddress = strings.ToLower(emailAddress)
-	user1, _ := db.refUsername[username]
-	user2, _ := db.refEmailAddress[emailAddress]
+	user1 := db.refUsername[username]
+	user2 := db.refEmailAddress[emailAddress]
 	switch {
 	case user1 == nil && user2 == nil:
 		return false, nil
 	case user1 == nil:
 		return false, fmt.Errorf("email is registered to a user, while username not found")
 	case user2 == nil:
-		return false, fmt.Errorf("username is registered to a user, while email not found")
+		return false, fmt.Errorf("username is registered to a user, while email not found (username: %s, email: %s)", username, emailAddress)
 	}
 	if user1.ID != user2.ID {
 		return false, fmt.Errorf("username and email address belong to two different users")

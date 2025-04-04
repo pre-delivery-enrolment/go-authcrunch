@@ -102,7 +102,8 @@ type Config struct {
 	// LoginIcon is the UI login icon attributes.
 	LoginIcon *icons.LoginIcon `json:"login_icon,omitempty" xml:"login_icon,omitempty" yaml:"login_icon,omitempty"`
 
-	UserInfoFields []string `json:"user_info_fields,omitempty" xml:"user_info_fields,omitempty" yaml:"user_info_fields,omitempty"`
+	UserInfoFields         []string `json:"user_info_fields,omitempty" xml:"user_info_fields,omitempty" yaml:"user_info_fields,omitempty"`
+	UserInfoRolesFieldName string   `json:"user_info_roles_field_name,omitempty" xml:"user_info_roles_field_name,omitempty" yaml:"user_info_roles_field_name,omitempty"`
 
 	// The name of the cookie storing id_token from OAuth provider.
 	IdentityTokenCookieName string `json:"identity_token_cookie_name,omitempty" xml:"identity_token_cookie_name,omitempty" yaml:"identity_token_cookie_name,omitempty"`
@@ -157,6 +158,10 @@ func (cfg *Config) Validate() error {
 		case "google":
 			cfg.Scopes = []string{"openid", "email", "profile"}
 		case "cognito":
+			cfg.Scopes = []string{"openid", "email", "profile"}
+		case "discord":
+			cfg.Scopes = []string{"identify"}
+		case "linkedin":
 			cfg.Scopes = []string{"openid", "email", "profile"}
 		default:
 			cfg.Scopes = []string{"openid", "email", "profile"}
@@ -242,6 +247,16 @@ func (cfg *Config) Validate() error {
 	case "nextcloud":
 		cfg.AuthorizationURL = fmt.Sprintf("%s/apps/oauth2/authorize", cfg.BaseAuthURL)
 		cfg.TokenURL = fmt.Sprintf("%s/apps/oauth2/api/v1/token", cfg.BaseAuthURL)
+	case "discord":
+		cfg.BaseAuthURL = "https://discord.com/oauth2"
+		cfg.AuthorizationURL = "https://discord.com/oauth2/authorize"
+		cfg.TokenURL = "https://discord.com/api/oauth2/token"
+		cfg.RequiredTokenFields = []string{"access_token"}
+	case "linkedin":
+		if cfg.BaseAuthURL == "" {
+			cfg.BaseAuthURL = "https://www.linkedin.com/oauth/"
+			cfg.MetadataURL = cfg.BaseAuthURL + ".well-known/openid-configuration"
+		}
 	case "generic":
 	case "":
 		return errors.ErrIdentityProviderConfig.WithArgs("driver name not found")
@@ -266,6 +281,7 @@ func (cfg *Config) Validate() error {
 	case "github":
 	case "facebook":
 	case "nextcloud":
+	case "discord":
 	default:
 		if len(cfg.JwksKeys) > 0 && cfg.AuthorizationURL != "" && cfg.TokenURL != "" {
 			for kid, fp := range cfg.JwksKeys {

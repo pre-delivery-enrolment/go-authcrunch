@@ -58,7 +58,7 @@ var PageTemplates = map[string]string{
                     <label for="username" class="block text-center pb-2 text-lg font-sans font-medium text-primary-700">Please provide username or email address</label>
                     <div class="app-inp-box">
                       <div class="app-inp-prf-img"><i class="las la-user"></i></div>
-                      <input class="app-inp-txt" id="username" name="username" type="text" autocorrect="off" autocapitalize="off" spellcheck="false" autofocus required />
+                      <input class="app-inp-txt" id="username" name="username" type="text" autocorrect="off" autocapitalize="off" autocomplete="username" spellcheck="false" autofocus required />
                     </div>
                   </div>
 
@@ -391,7 +391,7 @@ var PageTemplates = map[string]string{
                       class="app-gen-inp-txt validate"
                       pattern="{{ .Data.password_validate_pattern }}"
                       title="{{ .Data.password_validate_title }}"
-                      autocorrect="off" autocapitalize="off" autocomplete="current-password" spellcheck="false"
+                      autocorrect="off" autocapitalize="off" autocomplete="new-password" spellcheck="false"
                       required
                     />
                   </div>
@@ -411,7 +411,7 @@ var PageTemplates = map[string]string{
                   <div class="mt-1">
                     <input type="text" name="first_name" id="first_name"
                       class="app-gen-inp-txt"
-                      autocorrect="off" autocapitalize="off" autocomplete="off" spellcheck="false"
+                      autocorrect="off" autocapitalize="off" autocomplete="given-name" spellcheck="false"
                     />
                   </div>
                 </div>
@@ -420,7 +420,7 @@ var PageTemplates = map[string]string{
                   <div class="mt-1">
                     <input type="text" name="last_name" id="last_name"
                       class="app-gen-inp-txt"
-                      autocorrect="off" autocapitalize="off" autocomplete="off" spellcheck="false"
+                      autocorrect="off" autocapitalize="off" autocomplete="family-name" spellcheck="false"
                     />
                   </div>
                 </div>
@@ -1498,12 +1498,6 @@ function u2f_token_register(formID, btnID) {
     user_display_name: "{{ .Data.webauthn_user_display_name }}",
     user_verification: "{{ .Data.webauthn_user_verification }}",
     attestation: "{{ .Data.webauthn_attestation }}",
-    pubkey_cred_params: [
-      {
-        type: "public-key",
-        alg: -7,
-      },
-    ]
   };
   register_u2f_token(formID, btnID, params);
 }
@@ -1626,7 +1620,7 @@ function u2f_token_authenticate(formID, btnID) {
                     </svg>
                   </div>
                   <input id="secret" name="secret" type="password" class="app-inp-txt"
-                         autocorrect="off" autocapitalize="off" spellcheck="false" autofocus required />
+                         autocorrect="off" autocapitalize="off" autocomplete="current-password" spellcheck="false" autofocus required />
                 </div>
               </div>
 
@@ -1685,7 +1679,7 @@ function u2f_token_authenticate(formID, btnID) {
                 <div class="app-inp-box">
                   <input id="email" name="email" type="text"
                          class="app-inp-txt"
-                         autocorrect="off" autocapitalize="off" spellcheck="false" autocomplete="off"
+                         autocorrect="off" autocapitalize="off" autocomplete="email" spellcheck="false" autocomplete="off"
                          required />
                 </div>
               </div>
@@ -2105,12 +2099,6 @@ function u2f_token_authenticate(formID, btnID) {
         user_display_name: "{{ .Data.webauthn_user_display_name }}",
         user_verification: "{{ .Data.webauthn_user_verification }}",
         attestation: "{{ .Data.webauthn_attestation }}",
-        pubkey_cred_params: [
-          {
-            type: "public-key",
-            alg: -7,
-          },
-        ]
       };
       register_u2f_token(formID, btnID, params);
     }
@@ -2196,7 +2184,7 @@ function u2f_token_authenticate(formID, btnID) {
 
           {{ if gt .Data.role_count 0 }}
             <div class="pb-4 pt-4">
-              <p class="app-inp-lbl">Assume the following roles on the associated AWS accounts.</p>
+              <p class="app-inp-lbl">Assume any of the following roles on the associated AWS accounts by clicking the name of the role.</p>
             </div>
 
             <div class="flex flex-col">
@@ -2213,7 +2201,7 @@ function u2f_token_authenticate(formID, btnID) {
                       {{ range .Data.roles }}
                         <tr>
                           <td class="whitespace-nowrap py-4 pl-4 pr-3 text-sm font-medium text-primary-700 sm:pl-6 md:pl-0 leading-none">
-                            <span>{{ brsplitline .Name }}</span>
+                            <a href="{{ pathjoin $.ActionEndpoint "/apps/sso" .ProviderName "assume" .AccountID .Name }}">{{ brsplitline .Name }}</a>
                           </td>
                           <td class="whitespace-nowrap py-4 px-3 text-sm text-primary-500">{{ .AccountID }}</td>
                         </tr>

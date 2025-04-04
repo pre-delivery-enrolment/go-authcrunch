@@ -1,4 +1,4 @@
-// Copyright 2022 Paul Greenberg greenpau@outlook.com
+// Copyright 2024 Paul Greenberg greenpau@outlook.com
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,32 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package utils
+package tests
 
 import (
-	"io/ioutil"
-	"os"
-	"path/filepath"
+	"encoding/json"
 )
 
-func expandHomePath(fp string) (string, error) {
-	if fp[0] != '~' {
-		return fp, nil
+// UnpackDict unpacks interface into a map.
+func UnpackDict(i interface{}) (map[string]interface{}, error) {
+	var m map[string]interface{}
+	switch v := i.(type) {
+	case string:
+		if err := json.Unmarshal([]byte(v), &m); err != nil {
+			return nil, err
+		}
+	default:
+		b, err := json.Marshal(i)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(b, &m); err != nil {
+			return nil, err
+		}
 	}
-	hd, err := os.UserHomeDir()
-	if err != nil {
-		return fp, err
-	}
-	fp = filepath.Join(hd, fp[1:])
-	return fp, nil
-}
-
-// ReadFileBytes expands home directory and reads a file.
-func ReadFileBytes(fp string) ([]byte, error) {
-	var err error
-	fp, err = expandHomePath(fp)
-	if err != nil {
-		return nil, err
-	}
-	return ioutil.ReadFile(fp)
+	return m, nil
 }
