@@ -237,7 +237,15 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 			params.Set("ext-country_of_residence", country)
 		}
 	}
-	
+
+	if strings.Contains(reqParams["redirect_url"][0], "ui_locales=") {
+		local := strings.Split(reqParams["redirect_url"][0], "ui_locales")[1]
+
+		if local != "" {
+			params.Set("ui_locales", local)
+		}
+	}
+
 	params.Set("client_id", b.config.ClientID)
 
 	r.Response.RedirectURL = b.authorizationURL + "?" + params.Encode()
