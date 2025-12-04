@@ -238,7 +238,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 		}
 	}
 
-	if strings.Contains(reqParams["redirect_url"][0], "ui_locales=") {
+	if strings.Contains(reqParams["redirect_url"][0], "ui_locales%3D") {
 		local := strings.Split(reqParams["redirect_url"][0], "ui_locales")[1]
 
 		if local != "" {
