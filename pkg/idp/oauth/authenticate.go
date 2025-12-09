@@ -238,24 +238,11 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 		}
 	}
 
-	if strings.Contains(reqParams["redirect_url"][0], "ext-country_of_residence=") {
-		country := strings.Split(reqParams["redirect_url"][0], "ext-country_of_residence=")[1]
+	if strings.Contains(reqParams["redirect_url"][0], "ui_locales=") {
+		local := strings.Split(reqParams["redirect_url"][0], "ui_locales=")[1]
 
-		if country != "" {
-			params.Set("ui_locales", country)
-		}
-	}
-
-	if val, ok := reqParams["redirect_url"]; ok && len(val) > 0 {
-		decodedURL, err := url.QueryUnescape(val[0])
-		if err == nil && strings.Contains(decodedURL, "ui_locales=") {
-			parts := strings.Split(decodedURL, "ui_locales=")
-			if len(parts) > 1 {
-				locale := strings.SplitN(parts[1], "&", 2)[0]
-				if locale != "" {
-					params.Set("ui_locales", locale)
-				}
-			}
+		if len(local) >= 2 {
+			params.Set("ui_locales", local[len(local)-2:])
 		}
 	}
 
