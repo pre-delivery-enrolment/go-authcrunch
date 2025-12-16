@@ -230,19 +230,14 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 		params.Set("login_hint", reqParamsLoginHint)
 	}
 
-	if strings.Contains(reqParams["redirect_url"][0], "ext-country_of_residence=") {
-		country := strings.Split(reqParams["redirect_url"][0], "ext-country_of_residence=")[1]
-
-		if country != "" {
+	redirectURL, err := url.Parse(reqParams["redirect_url"][0])
+	if err == nil {
+		redirectQuery := redirectURL.Query()
+		if country := redirectQuery.Get("ext-country_of_residence"); country != "" {
 			params.Set("ext-country_of_residence", country)
 		}
-	}
-
-	if strings.Contains(reqParams["redirect_url"][0], "ui_locales") {
-		local := strings.Split(reqParams["redirect_url"][0], "ui_locales")[1]
-
-		if len(local) >= 2 {
-			params.Set("ui_locales", local[len(local)-2:])
+		if uiLocales := redirectQuery.Get("ui_locales"); uiLocales != "" {
+			params.Set("ui_locales", uiLocales)
 		}
 	}
 
