@@ -48,9 +48,11 @@ import (
 	"github.com/greenpau/go-authcrunch/pkg/ids/local"
 	"github.com/greenpau/go-authcrunch/pkg/kms"
 	"github.com/greenpau/go-authcrunch/pkg/messaging"
+	"github.com/greenpau/go-authcrunch/pkg/redirects"
 	"github.com/greenpau/go-authcrunch/pkg/registry"
 	"github.com/greenpau/go-authcrunch/pkg/requests"
 	"github.com/greenpau/go-authcrunch/pkg/sso"
+	"github.com/greenpau/go-authcrunch/pkg/tagging"
 	"github.com/greenpau/go-authcrunch/pkg/user"
 	"github.com/greenpau/go-authcrunch/pkg/util"
 	"github.com/greenpau/go-authcrunch/pkg/util/cfg"
@@ -69,6 +71,62 @@ func TestTagCompliance(t *testing.T) {
 		err       error
 	}{
 		{
+			name:  "test sso.KeyInfo struct",
+			entry: &sso.KeyInfo{},
+			opts: &Options{
+				Disabled: true,
+			},
+		},
+		{
+			name:  "test sso.SingleSignOnService struct",
+			entry: &sso.SingleSignOnService{},
+			opts: &Options{
+				Disabled: true,
+			},
+		},
+		{
+			name:  "test sso.EntityDescriptor struct",
+			entry: &sso.EntityDescriptor{},
+			opts: &Options{
+				Disabled: true,
+			},
+		},
+		{
+			name:  "test sso.X509Data struct",
+			entry: &sso.X509Data{},
+			opts: &Options{
+				Disabled: true,
+			},
+		},
+		{
+			name:  "test sso.IDPEntityDescriptor struct",
+			entry: &sso.IDPEntityDescriptor{},
+			opts: &Options{
+				Disabled: true,
+			},
+		},
+		{
+			name:  "test sso.Service struct",
+			entry: &sso.Service{},
+			opts: &Options{
+				Disabled: true,
+			},
+		},
+		{
+			name:  "test sso.IDPSSODescriptor struct",
+			entry: &sso.IDPSSODescriptor{},
+			opts: &Options{
+				Disabled: true,
+			},
+		},
+		{
+			name:  "test sso.KeyDescriptor struct",
+			entry: &sso.KeyDescriptor{},
+			opts: &Options{
+				Disabled: true,
+			},
+		},
+		{
 			name:  "test sso.Provider struct",
 			entry: &sso.Provider{},
 			opts:  &Options{},
@@ -76,6 +134,11 @@ func TestTagCompliance(t *testing.T) {
 		{
 			name:  "test sso.SingleSignOnProviderConfig struct",
 			entry: &sso.SingleSignOnProviderConfig{},
+			opts:  &Options{},
+		},
+		{
+			name:  "test sso.Request struct",
+			entry: &sso.Request{},
 			opts:  &Options{},
 		},
 		{
@@ -812,6 +875,16 @@ func TestTagCompliance(t *testing.T) {
 			entry: &requests.AuthorizationToken{},
 			opts:  &Options{},
 		},
+		{
+			name:  "test redirects.RedirectURIMatchConfig struct",
+			entry: &redirects.RedirectURIMatchConfig{},
+			opts:  &Options{},
+		},
+		{
+			name:  "test tagging.Tag struct",
+			entry: &tagging.Tag{},
+			opts:  &Options{},
+		},
 	}
 
 	for _, tc := range testcases {
@@ -930,7 +1003,7 @@ func TestStructTagCompliance(t *testing.T) {
 			}
 		}
 		if len(msgs) > 0 {
-			t.Logf("Add the following tests:\n%s", strings.Join(msgs, "\n"))
+			t.Logf("%s", "Add the following tests:\n"+strings.Join(msgs, "\n"))
 			t.Fatal("Fix above structs")
 		}
 	}

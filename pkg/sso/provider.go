@@ -15,8 +15,11 @@
 package sso
 
 import (
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"github.com/greenpau/go-authcrunch/pkg/errors"
+	fileutil "github.com/greenpau/go-authcrunch/pkg/util/file"
 	"go.uber.org/zap"
 )
 
@@ -27,13 +30,17 @@ type SingleSignOnProvider interface {
 	GetConfig() map[string]interface{}
 	Configure() error
 	Configured() bool
+	GetMetadata() ([]byte, error)
 }
 
 // Provider represents sso provider.
 type Provider struct {
-	config     *SingleSignOnProviderConfig `json:"config,omitempty" xml:"config,omitempty" yaml:"config,omitempty"`
+	config     *SingleSignOnProviderConfig
 	configured bool
 	logger     *zap.Logger
+	cert       *x509.Certificate
+	privateKey any
+	metadata   []byte
 }
 
 // GetName return the name associated with sso provider.
@@ -77,9 +84,38 @@ func NewSingleSignOnProvider(cfg *SingleSignOnProviderConfig, logger *zap.Logger
 		return nil, err
 	}
 
+	certBytes, err := fileutil.ReadFileBytes(cfg.CertPath)
+	if err != nil {
+		return nil, errors.ErrSingleSignOnProviderConfigInvalid.WithArgs("cert error", err)
+	}
+
+	certBlock, _ := pem.Decode(certBytes)
+	if certBlock.Type != "CERTIFICATE" {
+		return nil, errors.ErrSingleSignOnProviderConfigInvalid.WithArgs("unexpected block type", certBlock.Type)
+	}
+
+	cert, err := x509.ParseCertificate(certBlock.Bytes)
+
+	pkBytes, err := fileutil.ReadFileBytes(cfg.PrivateKeyPath)
+	if err != nil {
+		return nil, errors.ErrSingleSignOnProviderConfigInvalid.WithArgs("private key error", err)
+	}
+
+	pkBlock, _ := pem.Decode(pkBytes)
+	if pkBlock.Type != "PRIVATE KEY" {
+		return nil, errors.ErrSingleSignOnProviderConfigInvalid.WithArgs("unexpected block type", pkBlock.Type)
+	}
+
+	pk, err := x509.ParsePKCS8PrivateKey(pkBlock.Bytes)
+	if err != nil {
+		return nil, errors.ErrSingleSignOnProviderConfigInvalid.WithArgs("private key parse error", err)
+	}
+
 	prv := &Provider{
-		config: cfg,
-		logger: logger,
+		config:     cfg,
+		logger:     logger,
+		cert:       cert,
+		privateKey: pk,
 	}
 
 	p = prv

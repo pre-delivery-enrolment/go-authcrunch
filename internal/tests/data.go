@@ -1,4 +1,4 @@
-// Copyright 2022 Paul Greenberg greenpau@outlook.com
+// Copyright 2024 Paul Greenberg greenpau@outlook.com
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -12,12 +12,28 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package errors
+package tests
 
-// SSO Provider Errors
-const (
-	ErrSingleSignOnProviderConfigInvalid           StandardError = "invalid sso provider config: %v: %v"
-	ErrSingleSignOnProviderConfigureLoggerNotFound StandardError = "sso provider configuration has no logger"
-	ErrSingleSignOnProviderRequestMalformed        StandardError = "malformed sso provider request"
-	// ErrSingleSignOnProviderRequestInvalid          StandardError = "invalid sso provider request: %v"
+import (
+	"encoding/json"
 )
+
+// UnpackDict unpacks interface into a map.
+func UnpackDict(i interface{}) (map[string]interface{}, error) {
+	var m map[string]interface{}
+	switch v := i.(type) {
+	case string:
+		if err := json.Unmarshal([]byte(v), &m); err != nil {
+			return nil, err
+		}
+	default:
+		b, err := json.Marshal(i)
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(b, &m); err != nil {
+			return nil, err
+		}
+	}
+	return m, nil
+}
