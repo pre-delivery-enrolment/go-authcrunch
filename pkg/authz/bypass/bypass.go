@@ -73,23 +73,29 @@ func (b *Config) Validate() error {
 }
 
 // Match matches HTTP URL to the bypass configuration.
+// The request path is lower-cased before every string comparison so that all
+// non-regex bypass rules are case-insensitive. This mirrors Caddy's intended
+// MatchPath behaviour and prevents case-variation bypasses (CVE-2026-27587).
 func Match(r *http.Request, cfgs []*Config) bool {
+	// Normalise once; the regex branch uses the original to stay consistent
+	// with the configured pattern (regex authors opt-in to (?i) themselves).
+	reqPath := strings.ToLower(r.URL.Path)
 	for _, cfg := range cfgs {
 		switch cfg.match {
 		case bypassMatchExact:
-			if cfg.URI == r.URL.Path {
+			if strings.ToLower(cfg.URI) == reqPath {
 				return true
 			}
 		case bypassMatchPartial:
-			if strings.Contains(r.URL.Path, cfg.URI) {
+			if strings.Contains(reqPath, strings.ToLower(cfg.URI)) {
 				return true
 			}
 		case bypassMatchPrefix:
-			if strings.HasPrefix(r.URL.Path, cfg.URI) {
+			if strings.HasPrefix(reqPath, strings.ToLower(cfg.URI)) {
 				return true
 			}
 		case bypassMatchSuffix:
-			if strings.HasSuffix(r.URL.Path, cfg.URI) {
+			if strings.HasSuffix(reqPath, strings.ToLower(cfg.URI)) {
 				return true
 			}
 		case bypassMatchRegex:

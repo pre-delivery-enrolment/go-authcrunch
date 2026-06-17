@@ -17,6 +17,9 @@ package tag
 import (
 	"bufio"
 	"fmt"
+	"strings"
+	"unicode"
+
 	"github.com/greenpau/go-authcrunch"
 	"github.com/greenpau/go-authcrunch/internal/tests"
 	"github.com/greenpau/go-authcrunch/internal/testutils"
@@ -51,8 +54,6 @@ import (
 	"github.com/greenpau/go-authcrunch/pkg/user"
 	"github.com/greenpau/go-authcrunch/pkg/util"
 	"github.com/greenpau/go-authcrunch/pkg/util/cfg"
-	"strings"
-	"unicode"
 
 	"os"
 	"path/filepath"
@@ -929,7 +930,7 @@ func TestStructTagCompliance(t *testing.T) {
 			}
 		}
 		if len(msgs) > 0 {
-			t.Logf("Add the following tests:\n" + strings.Join(msgs, "\n"))
+			t.Logf("Add the following tests:\n%s", strings.Join(msgs, "\n"))
 			t.Fatal("Fix above structs")
 		}
 	}

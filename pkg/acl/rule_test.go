@@ -12830,7 +12830,7 @@ func TestEvalAclRule(t *testing.T) {
 	}
 	for _, tc := range testcases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Logf(tc.name)
+			t.Logf("%s", tc.name)
 			var rule aclRule
 			ctx := context.Background()
 			logger := logutil.NewLogger()

@@ -566,7 +566,7 @@ func (db *Database) AddAPIKey(r *requests.Request) error {
 	if err != nil {
 		return errors.ErrAddAPIKey.WithArgs(r.Key.Usage, err)
 	}
-	s := GetRandomStringFromRange(72, 96)
+	s := GetRandomStringFromRange(32, 64)
 	failCount := 0
 	for {
 		hk, err := NewPassword(s)

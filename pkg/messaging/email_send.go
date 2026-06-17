@@ -16,13 +16,14 @@ package messaging
 
 import (
 	"fmt"
+	"strings"
+	"time"
+
 	"github.com/emersion/go-sasl"
 	"github.com/emersion/go-smtp"
 	"github.com/greenpau/go-authcrunch/pkg/credentials"
 	"github.com/greenpau/go-authcrunch/pkg/errors"
 	"github.com/greenpau/go-authcrunch/pkg/util"
-	"strings"
-	"time"
 )
 
 // EmailProviderSendInput is input for EmailProvider.Send function.
@@ -35,24 +36,29 @@ type EmailProviderSendInput struct {
 
 // Send sends an email message.
 func (e *EmailProvider) Send(req *EmailProviderSendInput) error {
-	dial := smtp.Dial
-	if e.Protocol == "smtps" {
-		dial = func(addr string) (*smtp.Client, error) {
-			return smtp.DialTLS(addr, nil)
+	// go-smtp v0.24.0 removed the exported StartTLS method; STARTTLS is now
+	// performed at dial time via smtp.DialStartTLS.  We preserve the previous
+	// "opportunistic STARTTLS" behaviour by falling back to a plain connection
+	// only when the STARTTLS dial fails (server does not advertise the extension).
+	var c *smtp.Client
+	var err error
+
+	switch e.Protocol {
+	case "smtps":
+		c, err = smtp.DialTLS(e.Address, nil)
+	case "starttls":
+		c, err = smtp.DialStartTLS(e.Address, nil)
+	default:
+		// Attempt STARTTLS first; fall back to plain SMTP when unavailable.
+		c, err = smtp.DialStartTLS(e.Address, nil)
+		if err != nil {
+			c, err = smtp.Dial(e.Address)
 		}
 	}
-
-	c, err := dial(e.Address)
 	if err != nil {
 		return err
 	}
 	defer c.Close()
-
-	if found, _ := c.Extension("STARTTLS"); found {
-		if err := c.StartTLS(nil); err != nil {
-			return err
-		}
-	}
 
 	if !e.Passwordless && req.Credentials != nil {
 		if found, _ := c.Extension("AUTH"); !found {
@@ -68,8 +74,9 @@ func (e *EmailProvider) Send(req *EmailProviderSendInput) error {
 		return err
 	}
 
+	// go-smtp v0.24.0: Rcpt now requires a second *smtp.RcptOptions argument.
 	for _, rcpt := range req.Recipients {
-		if err := c.Rcpt(rcpt); err != nil {
+		if err := c.Rcpt(rcpt, nil); err != nil {
 			return err
 		}
 	}
@@ -104,7 +111,7 @@ func (e *EmailProvider) Send(req *EmailProviderSendInput) error {
 	if err != nil {
 		return err
 	}
-	_, err = fmt.Fprintf(wc, msg)
+	_, err = fmt.Fprint(wc, msg)
 	if err != nil {
 		return err
 	}

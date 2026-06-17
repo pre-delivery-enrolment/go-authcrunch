@@ -26,11 +26,19 @@ func init() {
 }
 
 // MatchPathBasedACL matches pattern in a URI.
+// Both pattern and uri are normalised to lower-case before comparison so that
+// matching is always case-insensitive, consistent with how Caddy's MatchPath
+// behaves (see CVE-2026-27587 for the Caddy-side escapedPath branch that
+// failed to apply this normalisation).
 func MatchPathBasedACL(pattern, uri string) bool {
 	// First, handle the case where there are no wildcards
 	if pattern == "" {
 		return false
 	}
+	// Normalise to lower-case for case-insensitive comparison.
+	pattern = strings.ToLower(pattern)
+	uri = strings.ToLower(uri)
+
 	if !strings.Contains(pattern, "*") {
 		if pattern == uri {
 			return true
@@ -42,7 +50,7 @@ func MatchPathBasedACL(pattern, uri string) bool {
 	var regex *regexp.Regexp
 	var found bool
 
-	// Check cached entries
+	// Check cached entries (keyed on the already-lowercased pattern).
 	regex, found = pathACLPatterns[pattern]
 	if !found {
 		// advPattern = strings.ReplaceAll(pattern, "/", "\\/")

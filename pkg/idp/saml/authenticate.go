@@ -17,10 +17,12 @@ package saml
 import (
 	"encoding/base64"
 	"fmt"
-	"github.com/greenpau/go-authcrunch/pkg/requests"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/greenpau/go-authcrunch/pkg/requests"
 
 	"go.uber.org/zap"
 )
@@ -80,7 +82,13 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 		return fmt.Errorf("unsupported ACS URL %s", acsURL)
 	}
 
-	samlAssertions, err := sp.ParseXMLResponse(samlResponseBytes, []string{""})
+	// crewjam/saml v0.5.1: ParseXMLResponse requires the current ACS URL as a
+	// third argument for additional destination validation.
+	parsedACSURL, err := url.Parse(acsURL)
+	if err != nil {
+		return fmt.Errorf("failed to parse ACS URL %q: %v", acsURL, err)
+	}
+	samlAssertions, err := sp.ParseXMLResponse(samlResponseBytes, []string{""}, *parsedACSURL)
 	if err != nil {
 		return fmt.Errorf("failed to ParseXMLResponse: %s", err)
 	}
