@@ -16,10 +16,9 @@ package tests
 
 import (
 	"crypto/rand"
+	"fmt"
 	"github.com/google/uuid"
 	"io"
-	mathrand "math/rand"
-	"strings"
 )
 
 // NewID returns a random ID to be used for user identification.
@@ -38,11 +37,7 @@ func NewRandomString(length int) string {
 
 	b := make([]byte, length)
 	if _, err := io.ReadFull(rand.Reader, b); err != nil {
-		var sb strings.Builder
-		for i := 0; i < length; i++ {
-			sb.WriteRune(chars[mathrand.Intn(len(chars))])
-		}
-		return sb.String()
+		panic(fmt.Sprintf("crypto/rand failed: %v", err))
 	}
 
 	for i, char := range b {

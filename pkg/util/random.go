@@ -17,10 +17,9 @@ package util
 import (
 	"crypto/rand"
 	"encoding/base32"
+	"fmt"
 	"io"
-	//	"math"
 	"math/big"
-	mathrand "math/rand"
 	"unicode"
 )
 
@@ -39,11 +38,8 @@ var charsetTable = &unicode.RangeTable{
 func genRandInt(i int) uint32 {
 	n, err := rand.Int(rand.Reader, big.NewInt(int64(i)))
 	if err != nil {
-		return uint32(mathrand.Intn(i))
+		panic(fmt.Sprintf("crypto/rand failed: %v", err))
 	}
-	//if n.Uint64() > math.MaxUint32+1 {
-	//	return uint32(n.Uint64() & uint32(0xFFFFFFFF))
-	//}
 	return uint32(n.Uint64())
 }
 
@@ -51,11 +47,7 @@ func gen(length uint32, charset string) string {
 	charsetLen := byte(len(charset))
 	b := make([]byte, length)
 	if _, err := io.ReadFull(rand.Reader, b); err != nil {
-		// for i uint32 := 0; i < length; i++ {
-		for i := uint32(0); i < length; {
-			b[i] = charset[mathrand.Intn(len(charset))]
-		}
-		return string(b)
+		panic(fmt.Sprintf("crypto/rand failed: %v", err))
 	}
 
 	for i, char := range b {
