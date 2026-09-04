@@ -66,6 +66,18 @@ func (p *Portal) handleHTTPExternalLogin(ctx context.Context, w http.ResponseWri
 	}
 	err = provider.Request(operator.Authenticate, rr)
 	if err != nil {
+		if strings.Contains(r.URL.Path, "authorization-code-callback") {
+			p.logger.Warn(
+				"OAuth callback failed",
+				zap.String("session_id", rr.Upstream.SessionID),
+				zap.String("request_id", rr.ID),
+				zap.String("auth_method", rr.Upstream.Method),
+				zap.String("auth_realm", rr.Upstream.Realm),
+				zap.String("path", r.URL.Path),
+				zap.String("query", r.URL.RawQuery),
+				zap.Error(err),
+			)
+		}
 		p.logger.Warn(
 			"Authentication failed",
 			zap.String("session_id", rr.Upstream.SessionID),

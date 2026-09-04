@@ -20,6 +20,8 @@ import (
 	"github.com/greenpau/go-authcrunch/pkg/errors"
 	"github.com/greenpau/go-authcrunch/pkg/kms"
 	"strings"
+
+	"go.uber.org/zap"
 )
 
 var (
@@ -34,9 +36,29 @@ var (
 func (b *IdentityProvider) validateAccessToken(state string, data map[string]interface{}) (map[string]interface{}, error) {
 	var tokenString string
 	if v, exists := data[b.config.IdentityTokenName]; exists {
-		tokenString = v.(string)
+		tv, ok := v.(string)
+		if !ok {
+			return nil, errors.ErrIdentityProviderOAuthAccessTokenNotFound.WithArgs(b.config.IdentityTokenName)
+		}
+		tokenString = tv
 	} else {
-		return nil, errors.ErrIdentityProviderOAuthAccessTokenNotFound.WithArgs(b.config.IdentityTokenName)
+		if b.config.IdentityTokenName == "id_token" && b.allowIDTokenFallback() {
+			if v, accessTokenExists := data["access_token"]; accessTokenExists {
+				tv, ok := v.(string)
+				if ok {
+					tokenString = tv
+					b.logger.Warn(
+						"identity token field missing, validating with access_token fallback",
+						zap.String("provider", b.config.Name),
+						zap.String("realm", b.config.Realm),
+						zap.String("state", state),
+					)
+				}
+			}
+		}
+		if tokenString == "" {
+			return nil, errors.ErrIdentityProviderOAuthAccessTokenNotFound.WithArgs(b.config.IdentityTokenName)
+		}
 	}
 
 	token, err := jwtlib.Parse(tokenString, func(token *jwtlib.Token) (interface{}, error) {
@@ -77,6 +99,13 @@ func (b *IdentityProvider) validateAccessToken(state string, data map[string]int
 	})
 
 	if err != nil {
+		b.logger.Warn(
+			"failed parsing oauth token",
+			zap.String("provider", b.config.Name),
+			zap.String("realm", b.config.Realm),
+			zap.String("token_name", b.config.IdentityTokenName),
+			zap.Error(err),
+		)
 		return nil, errors.ErrIdentityProviderOAuthParseToken.WithArgs(b.config.IdentityTokenName, err)
 	}
 

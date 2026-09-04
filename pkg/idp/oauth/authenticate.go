@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -88,6 +89,13 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 			if b.state.exists(reqParamsState) {
 				b.state.addCode(reqParamsState, reqParamsCode)
 			} else {
+				b.logger.Warn(
+					"oauth callback rejected: state not found",
+					zap.String("session_id", r.Upstream.SessionID),
+					zap.String("request_id", r.ID),
+					zap.String("state", reqParamsState),
+					zap.String("callback_path", r.Upstream.Request.URL.Path),
+				)
 				return errors.ErrIdentityProviderOauthAuthorizationStateNotFound
 			}
 			b.logger.Debug(
@@ -133,6 +141,14 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 			default:
 				m, err = b.validateAccessToken(reqParamsState, accessToken)
 				if err != nil {
+					b.logger.Warn(
+						"oauth callback token validation failed",
+						zap.String("session_id", r.Upstream.SessionID),
+						zap.String("request_id", r.ID),
+						zap.String("state", reqParamsState),
+						zap.Strings("token_fields", getMapKeys(accessToken)),
+						zap.Error(err),
+					)
 					return errors.ErrIdentityProviderOauthValidateAccessTokenFailed.WithArgs(err)
 				}
 			}
@@ -178,6 +194,14 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 			}
 			m, err := b.validateAccessToken(reqParamsState, accessToken)
 			if err != nil {
+				b.logger.Warn(
+					"oauth callback token validation failed",
+					zap.String("session_id", r.Upstream.SessionID),
+					zap.String("request_id", r.ID),
+					zap.String("state", reqParamsState),
+					zap.Strings("token_fields", getMapKeys(accessToken)),
+					zap.Error(err),
+				)
 				return errors.ErrIdentityProviderOauthValidateAccessTokenFailed.WithArgs(err)
 			}
 
@@ -328,6 +352,24 @@ func (b *IdentityProvider) fetchAccessToken(redirectURI, state, code string) (ma
 
 	for k := range b.requiredTokenFields {
 		if _, exists := data[k]; !exists {
+			if k == "id_token" && b.allowIDTokenFallback() {
+				if _, accessTokenExists := data["access_token"]; accessTokenExists {
+					b.logger.Warn(
+						"oauth token response missing id_token, using access_token fallback",
+						zap.String("provider", b.config.Name),
+						zap.String("realm", b.config.Realm),
+						zap.Strings("token_fields", getMapKeys(data)),
+					)
+					continue
+				}
+			}
+			b.logger.Warn(
+				"oauth token response missing required field",
+				zap.String("provider", b.config.Name),
+				zap.String("realm", b.config.Realm),
+				zap.String("missing_field", k),
+				zap.Strings("token_fields", getMapKeys(data)),
+			)
 			return nil, errors.ErrIdentityProviderAuthorizationServerResponseFieldNotFound.WithArgs(k)
 		}
 	}
@@ -395,8 +437,51 @@ func (b *IdentityProvider) fetchFacebookAccessToken(redirectURI, state, code str
 
 	for k := range b.requiredTokenFields {
 		if _, exists := data[k]; !exists {
+			if k == "id_token" && b.allowIDTokenFallback() {
+				if _, accessTokenExists := data["access_token"]; accessTokenExists {
+					b.logger.Warn(
+						"oauth token response missing id_token, using access_token fallback",
+						zap.String("provider", b.config.Name),
+						zap.String("realm", b.config.Realm),
+						zap.Strings("token_fields", getMapKeys(data)),
+					)
+					continue
+				}
+			}
+			b.logger.Warn(
+				"oauth token response missing required field",
+				zap.String("provider", b.config.Name),
+				zap.String("realm", b.config.Realm),
+				zap.String("missing_field", k),
+				zap.Strings("token_fields", getMapKeys(data)),
+			)
 			return nil, errors.ErrIdentityProviderAuthorizationServerResponseFieldNotFound.WithArgs(k)
 		}
 	}
 	return data, nil
 }
+
+func (b *IdentityProvider) allowIDTokenFallback() bool {
+	if b.config.Driver != "generic" {
+		return false
+	}
+	providerHints := strings.ToLower(strings.Join([]string{
+		b.config.Name,
+		b.config.Realm,
+		b.config.BaseAuthURL,
+		b.config.MetadataURL,
+		b.config.AuthorizationURL,
+		b.config.TokenURL,
+	}, " "))
+	return strings.Contains(providerHints, "idkit")
+}
+
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
