@@ -21,27 +21,30 @@ import (
 )
 
 type stateManager struct {
-	mux    sync.Mutex
-	nonces map[string]string
-	states map[string]time.Time
-	codes  map[string]string
-	status map[string]interface{}
+	mux       sync.Mutex
+	nonces    map[string]string
+	states    map[string]time.Time
+	codes     map[string]string
+	status    map[string]interface{}
+	verifiers map[string]string
 }
 
 func newStateManager() *stateManager {
 	return &stateManager{
-		nonces: make(map[string]string),
-		states: make(map[string]time.Time),
-		codes:  make(map[string]string),
-		status: make(map[string]interface{}),
+		nonces:    make(map[string]string),
+		states:    make(map[string]time.Time),
+		codes:     make(map[string]string),
+		status:    make(map[string]interface{}),
+		verifiers: make(map[string]string),
 	}
 }
 
-func (sm *stateManager) add(state, nonce string) {
+func (sm *stateManager) add(state, nonce, verifier string) {
 	sm.mux.Lock()
 	defer sm.mux.Unlock()
 	sm.nonces[state] = nonce
 	sm.states[state] = time.Now()
+	sm.verifiers[state] = verifier
 }
 
 func (sm *stateManager) del(state string) {
@@ -51,6 +54,7 @@ func (sm *stateManager) del(state string) {
 	delete(sm.states, state)
 	delete(sm.codes, state)
 	delete(sm.status, state)
+	delete(sm.verifiers, state)
 }
 
 func (sm *stateManager) exists(state string) bool {
@@ -81,6 +85,16 @@ func (sm *stateManager) addCode(state, code string) {
 	sm.codes[state] = code
 }
 
+func (sm *stateManager) getVerifier(state string) (string, error) {
+	sm.mux.Lock()
+	defer sm.mux.Unlock()
+	v, exists := sm.verifiers[state]
+	if !exists {
+		return "", fmt.Errorf("no verifier found for %s", state)
+	}
+	return v, nil
+}
+
 func manageStateManager(sm *stateManager) {
 	intervals := time.NewTicker(time.Minute * time.Duration(2))
 	for range intervals.C {
@@ -105,6 +119,7 @@ func manageStateManager(sm *stateManager) {
 				delete(sm.states, state)
 				delete(sm.codes, state)
 				delete(sm.status, state)
+				delete(sm.verifiers, state)
 			}
 		}
 		sm.mux.Unlock()

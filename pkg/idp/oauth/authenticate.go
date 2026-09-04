@@ -99,67 +99,125 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 			)
 
 			reqRedirectURI := reqPath + "/authorization-code-callback"
-			var accessToken map[string]interface{}
+			var m map[string]interface{}
 			var err error
-			switch b.config.Driver {
-			case "facebook":
-				accessToken, err = b.fetchFacebookAccessToken(reqRedirectURI, reqParamsState, reqParamsCode)
-			default:
-				accessToken, err = b.fetchAccessToken(reqRedirectURI, reqParamsState, reqParamsCode)
-			}
-			if err != nil {
-				b.logger.Debug(
-					"failed fetching OAuth 2.0 access token from the authorization server",
+
+			if isJWTCode(reqParamsCode) {
+				// The authorization server returned a JWT directly in the code param.
+				// Validate it without a token exchange.
+				b.logger.Info(
+					"OAuth 2.0 code detected as JWT, skipping token exchange",
 					zap.String("session_id", r.Upstream.SessionID),
 					zap.String("request_id", r.ID),
-					zap.Error(err),
 				)
-				return errors.ErrIdentityProviderOauthFetchAccessTokenFailed.WithArgs(err)
-			}
-			b.logger.Debug(
-				"received OAuth 2.0 authorization server access token",
-				zap.String("request_id", r.ID),
-				zap.Any("token", accessToken),
-			)
-
-			var m map[string]interface{}
-
-			switch b.config.Driver {
-			case "github", "gitlab", "facebook", "discord", "linkedin":
-				m, err = b.fetchClaims(accessToken)
-				if err != nil {
-					return errors.ErrIdentityProviderOauthFetchClaimsFailed.WithArgs(err)
+				syntheticToken := map[string]interface{}{
+					b.config.IdentityTokenName: reqParamsCode,
 				}
-			default:
-				m, err = b.validateAccessToken(reqParamsState, accessToken)
+				m, err = b.validateAccessToken(reqParamsState, syntheticToken)
 				if err != nil {
+					b.logger.Warn(
+						"failed validating JWT from code param",
+						zap.String("session_id", r.Upstream.SessionID),
+						zap.String("request_id", r.ID),
+						zap.Error(err),
+					)
 					return errors.ErrIdentityProviderOauthValidateAccessTokenFailed.WithArgs(err)
 				}
-			}
-
-			// Fetch user info.
-			if err := b.fetchUserInfo(accessToken, m); err != nil {
-				b.logger.Debug(
-					"failed fetching user info",
+				b.logger.Info(
+					"OAuth 2.0 JWT code validated successfully",
+					zap.String("session_id", r.Upstream.SessionID),
 					zap.String("request_id", r.ID),
-					zap.Error(err),
 				)
-			}
-
-			// Fetch subsequent user info, e.g. user groups.
-			if err := b.fetchUserGroups(accessToken, m); err != nil {
-				b.logger.Debug(
-					"failed fetching user groups",
-					zap.String("request_id", r.ID),
-					zap.Error(err),
-				)
-			}
-
-			if b.config.IdentityTokenCookieEnabled {
-				if v, exists := accessToken["id_token"]; exists {
+				if b.config.IdentityTokenCookieEnabled {
 					r.Response.IdentityTokenCookie.Enabled = true
 					r.Response.IdentityTokenCookie.Name = b.config.IdentityTokenCookieName
-					r.Response.IdentityTokenCookie.Payload = v.(string)
+					r.Response.IdentityTokenCookie.Payload = reqParamsCode
+				}
+			} else {
+				// The authorization server returned an authorization code.
+				// Exchange it for tokens via the token endpoint.
+				b.logger.Info(
+					"OAuth 2.0 code detected as authorization code, performing token exchange",
+					zap.String("session_id", r.Upstream.SessionID),
+					zap.String("request_id", r.ID),
+					zap.Bool("pkce_disabled", b.disablePKCE),
+				)
+				var accessToken map[string]interface{}
+				switch b.config.Driver {
+				case "facebook":
+					accessToken, err = b.fetchFacebookAccessToken(reqRedirectURI, reqParamsState, reqParamsCode)
+				default:
+					var codeVerifier string
+					if !b.disablePKCE {
+						codeVerifier, err = b.state.getVerifier(reqParamsState)
+						if err != nil {
+							b.logger.Warn(
+								"failed retrieving PKCE code verifier from state",
+								zap.String("session_id", r.Upstream.SessionID),
+								zap.String("request_id", r.ID),
+								zap.Error(err),
+							)
+							return errors.ErrIdentityProviderOauthFetchAccessTokenFailed.WithArgs(err)
+						}
+					}
+					accessToken, err = b.fetchAccessToken(reqRedirectURI, reqParamsState, reqParamsCode, codeVerifier)
+				}
+				if err != nil {
+					b.logger.Warn(
+						"failed fetching OAuth 2.0 access token from the authorization server",
+						zap.String("session_id", r.Upstream.SessionID),
+						zap.String("request_id", r.ID),
+						zap.Error(err),
+					)
+					return errors.ErrIdentityProviderOauthFetchAccessTokenFailed.WithArgs(err)
+				}
+				b.logger.Info(
+					"received OAuth 2.0 authorization server access token",
+					zap.String("request_id", r.ID),
+				)
+				b.logger.Debug(
+					"OAuth 2.0 access token contents",
+					zap.String("request_id", r.ID),
+					zap.Any("token", accessToken),
+				)
+
+				switch b.config.Driver {
+				case "github", "gitlab", "facebook", "discord", "linkedin":
+					m, err = b.fetchClaims(accessToken)
+					if err != nil {
+						return errors.ErrIdentityProviderOauthFetchClaimsFailed.WithArgs(err)
+					}
+				default:
+					m, err = b.validateAccessToken(reqParamsState, accessToken)
+					if err != nil {
+						return errors.ErrIdentityProviderOauthValidateAccessTokenFailed.WithArgs(err)
+					}
+				}
+
+				// Fetch user info.
+				if err := b.fetchUserInfo(accessToken, m); err != nil {
+					b.logger.Debug(
+						"failed fetching user info",
+						zap.String("request_id", r.ID),
+						zap.Error(err),
+					)
+				}
+
+				// Fetch subsequent user info, e.g. user groups.
+				if err := b.fetchUserGroups(accessToken, m); err != nil {
+					b.logger.Debug(
+						"failed fetching user groups",
+						zap.String("request_id", r.ID),
+						zap.Error(err),
+					)
+				}
+
+				if b.config.IdentityTokenCookieEnabled {
+					if v, exists := accessToken["id_token"]; exists {
+						r.Response.IdentityTokenCookie.Enabled = true
+						r.Response.IdentityTokenCookie.Name = b.config.IdentityTokenCookieName
+						r.Response.IdentityTokenCookie.Payload = v.(string)
+					}
 				}
 			}
 
@@ -241,11 +299,19 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 		}
 	}
 
+	// PKCE (RFC 7636) - generate code verifier and challenge
+	var codeVerifier string
+	if !b.disablePKCE {
+		codeVerifier = util.GenerateCodeVerifier()
+		params.Set("code_challenge", util.ComputeCodeChallenge(codeVerifier))
+		params.Set("code_challenge_method", "S256")
+	}
+
 	params.Set("client_id", b.config.ClientID)
 
 	r.Response.RedirectURL = b.authorizationURL + "?" + params.Encode()
 
-	b.state.add(state, nonce)
+	b.state.add(state, nonce, codeVerifier)
 	b.logger.Debug(
 		"redirecting to OAuth 2.0 endpoint",
 		zap.String("request_id", r.ID),
@@ -254,7 +320,12 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 	return nil
 }
 
-func (b *IdentityProvider) fetchAccessToken(redirectURI, state, code string) (map[string]interface{}, error) {
+// isJWTCode reports whether s is a JWT (three dot-separated base64url segments).
+func isJWTCode(s string) bool {
+	return strings.Count(s, ".") == 2
+}
+
+func (b *IdentityProvider) fetchAccessToken(redirectURI, state, code, codeVerifier string) (map[string]interface{}, error) {
 	params := url.Values{}
 	params.Set("client_id", b.config.ClientID)
 	params.Set("client_secret", b.config.ClientSecret)
@@ -264,6 +335,9 @@ func (b *IdentityProvider) fetchAccessToken(redirectURI, state, code string) (ma
 	params.Set("state", state)
 	params.Set("code", code)
 	params.Set("redirect_uri", redirectURI)
+	if codeVerifier != "" {
+		params.Set("code_verifier", codeVerifier)
+	}
 
 	cli := &http.Client{
 		Timeout: time.Second * 10,

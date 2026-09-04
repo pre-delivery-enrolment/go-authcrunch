@@ -76,6 +76,7 @@ type IdentityProvider struct {
 	configured    bool
 	// Disabled the check for the presence of email field in a token.
 	disableEmailClaimCheck bool
+	disablePKCE            bool
 }
 
 // NewIdentityProvider returns an instance of IdentityProvider.
@@ -152,6 +153,9 @@ func (b *IdentityProvider) Configure() error {
 	if b.config.EmailClaimCheckDisabled {
 		b.disableEmailClaimCheck = true
 	}
+	if b.config.PKCEDisabled {
+		b.disablePKCE = true
+	}
 	if b.config.KeyVerificationDisabled {
 		b.disableKeyVerification = true
 	}
@@ -192,6 +196,7 @@ func (b *IdentityProvider) Configure() error {
 
 	switch b.config.Driver {
 	case "generic":
+		b.disablePKCE = true
 	case "okta":
 	case "google":
 	case "gitlab":
@@ -202,20 +207,25 @@ func (b *IdentityProvider) Configure() error {
 		b.disableResponseType = true
 		b.disableNonce = true
 		b.enableAcceptHeader = true
+		b.disablePKCE = true
 	case "facebook":
 		b.disableKeyVerification = true
 		b.disablePassGrantType = true
 		b.disableResponseType = true
 		b.disableNonce = true
 		b.enableAcceptHeader = true
+		b.disablePKCE = true
 	case "discord":
 		b.disableKeyVerification = true
 		b.disableNonce = true
 		b.enableAcceptHeader = true
+		b.disablePKCE = true
 	case "linkedin":
 		b.disableNonce = true
+		b.disablePKCE = true
 	case "nextcloud":
 		b.disableKeyVerification = true
+		b.disablePKCE = true
 	}
 
 	b.serverName = b.config.ServerName

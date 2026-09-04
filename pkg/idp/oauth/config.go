@@ -109,6 +109,10 @@ type Config struct {
 	IdentityTokenCookieName string `json:"identity_token_cookie_name,omitempty" xml:"identity_token_cookie_name,omitempty" yaml:"identity_token_cookie_name,omitempty"`
 	// Enables the storing of id_token from OAuth provider in a HTTP cookie.
 	IdentityTokenCookieEnabled bool `json:"identity_token_cookie_enabled,omitempty" xml:"identity_token_cookie_enabled,omitempty" yaml:"identity_token_cookie_enabled,omitempty"`
+
+	// PKCEDisabled disables PKCE (RFC 7636) for the OAuth 2.0 authorization code flow.
+	// PKCE is enabled by default. Set to true for identity providers that do not support PKCE.
+	PKCEDisabled bool `json:"pkce_disabled,omitempty" xml:"pkce_disabled,omitempty" yaml:"pkce_disabled,omitempty"`
 }
 
 // Validate validates identity store configuration.

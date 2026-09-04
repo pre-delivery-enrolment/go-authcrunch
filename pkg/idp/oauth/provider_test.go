@@ -19,14 +19,18 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
+	jwtlib "github.com/golang-jwt/jwt/v4"
 	"github.com/greenpau/go-authcrunch/internal/tests"
 	"github.com/greenpau/go-authcrunch/pkg/errors"
+	"github.com/greenpau/go-authcrunch/pkg/requests"
+	"github.com/greenpau/go-authcrunch/pkg/util"
 	logutil "github.com/greenpau/go-authcrunch/pkg/util/log"
 	"go.uber.org/zap"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 )
 
 func TestNewIdentityProvider(t *testing.T) {
@@ -235,4 +239,236 @@ func TestNewIdentityProvider(t *testing.T) {
 			tests.EvalObjectsWithLog(t, "IdentityProvider", tc.want, got, msgs)
 		})
 	}
+}
+
+func TestPKCEFlow(t *testing.T) {
+	// 2048-bit RSA key is sufficient for tests and much faster than 4096-bit.
+	pk1, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	jpk1, err := NewJwksKeyFromRSAPrivateKey(pk1)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	jwksKeys := []*JwksKey{jpk1}
+
+	// capturedCodeVerifier is written by the mock token endpoint handler and
+	// read by sub-test 2.  redirectNonce is written by sub-test 1 and read by
+	// the token endpoint handler when it builds the id_token JWT.
+	var (
+		capturedCodeVerifier string
+		redirectNonce        string
+	)
+
+	ts := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+		resp := make(map[string]interface{})
+		switch req.URL.Path {
+		case "/.well-known/openid-configuration":
+			resp["authorization_endpoint"] = "https://" + req.Host + "/authorize"
+			resp["token_endpoint"] = "https://" + req.Host + "/access_token"
+			resp["jwks_uri"] = "https://" + req.Host + "/jwks.json"
+		case "/jwks.json":
+			resp["keys"] = jwksKeys
+		case "/access_token":
+			if parseErr := req.ParseForm(); parseErr != nil {
+				t.Errorf("mock /access_token: failed to parse form: %v", parseErr)
+				http.Error(w, "bad request", http.StatusBadRequest)
+				return
+			}
+			capturedCodeVerifier = req.FormValue("code_verifier")
+
+			now := time.Now()
+			claims := jwtlib.MapClaims{
+				"sub":   "test-user",
+				"email": "test@example.com",
+				"nonce": redirectNonce,
+				"iat":   now.Unix(),
+				"exp":   now.Add(time.Hour).Unix(),
+			}
+			idToken := jwtlib.NewWithClaims(jwtlib.SigningMethodRS256, claims)
+			idTokenStr, signErr := idToken.SignedString(pk1)
+			if signErr != nil {
+				t.Errorf("mock /access_token: failed to sign id_token: %v", signErr)
+				http.Error(w, "internal error", http.StatusInternalServerError)
+				return
+			}
+			resp["access_token"] = "test_access_token"
+			resp["id_token"] = idTokenStr
+		default:
+			t.Fatalf("mock server: unsupported path: %v", req.URL.Path)
+		}
+
+		b, marshalErr := json.Marshal(resp)
+		if marshalErr != nil {
+			t.Fatalf("mock server: failed to marshal response: %v", marshalErr)
+		}
+		fmt.Fprintln(w, string(b))
+	}))
+	defer ts.Close()
+
+	logger := logutil.NewLogger()
+
+	prv, err := NewIdentityProvider(&Config{
+		Name:                  "contoso",
+		Realm:                 "contoso",
+		Driver:                "generic",
+		ClientID:              "foo",
+		ClientSecret:          "bar",
+		BaseAuthURL:           ts.URL,
+		MetadataURL:           ts.URL + "/.well-known/openid-configuration",
+		TLSInsecureSkipVerify: true,
+	}, logger)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := prv.Configure(); err != nil {
+		t.Fatal(err)
+	}
+
+	// redirectState and redirectChallenge are set by sub-test 1 and consumed by
+	// sub-test 2.  Sub-tests run sequentially (no t.Parallel), so plain
+	// variables are safe.
+	var redirectState, redirectChallenge string
+
+	t.Run("PKCE params present in authorization redirect", func(t *testing.T) {
+		reqURL, _ := url.Parse(
+			"https://auth.example.com/callback?redirect_url=https%3A%2F%2Fauth.example.com%2Flogin",
+		)
+		r := &requests.Request{
+			ID: "test-1",
+			Upstream: requests.Upstream{
+				Request:   &http.Request{URL: reqURL},
+				BaseURL:   "https://auth.example.com",
+				BasePath:  "/",
+				Method:    "oauth2",
+				Realm:     "contoso",
+				SessionID: "session-1",
+			},
+		}
+
+		if err := prv.Authenticate(r); err != nil {
+			t.Fatalf("Authenticate returned unexpected error: %v", err)
+		}
+		if r.Response.Code != http.StatusFound {
+			t.Fatalf("expected response code 302, got %d", r.Response.Code)
+		}
+
+		parsed, err := url.Parse(r.Response.RedirectURL)
+		if err != nil {
+			t.Fatalf("failed to parse redirect URL %q: %v", r.Response.RedirectURL, err)
+		}
+		q := parsed.Query()
+
+		challenge := q.Get("code_challenge")
+		if challenge == "" {
+			t.Fatal("code_challenge not present in redirect URL")
+		}
+		if len(challenge) != 43 {
+			t.Fatalf("code_challenge length = %d, want 43", len(challenge))
+		}
+		if method := q.Get("code_challenge_method"); method != "S256" {
+			t.Fatalf("code_challenge_method = %q, want S256", method)
+		}
+		state := q.Get("state")
+		if state == "" {
+			t.Fatal("state not present in redirect URL")
+		}
+
+		redirectState = state
+		redirectChallenge = challenge
+		redirectNonce = q.Get("nonce")
+	})
+
+	t.Run("code_verifier sent in token exchange", func(t *testing.T) {
+		if redirectState == "" {
+			t.Skip("skipping: sub-test 1 did not produce a redirect state")
+		}
+
+		callbackURL, _ := url.Parse(
+			"https://auth.example.com/callback?code=test_code&state=" +
+				url.QueryEscape(redirectState),
+		)
+		r := &requests.Request{
+			ID: "test-2",
+			Upstream: requests.Upstream{
+				Request:   &http.Request{URL: callbackURL},
+				BaseURL:   "https://auth.example.com",
+				BasePath:  "/",
+				Method:    "oauth2",
+				Realm:     "contoso",
+				SessionID: "session-2",
+			},
+		}
+
+		if err := prv.Authenticate(r); err != nil {
+			t.Fatalf("Authenticate (callback) returned error: %v", err)
+		}
+		if r.Response.Code != http.StatusOK {
+			t.Fatalf("expected response code 200, got %d", r.Response.Code)
+		}
+		if capturedCodeVerifier == "" {
+			t.Fatal("code_verifier was not sent to the token endpoint")
+		}
+		if got := util.ComputeCodeChallenge(capturedCodeVerifier); got != redirectChallenge {
+			t.Fatalf("PKCE mismatch: ComputeCodeChallenge(%q) = %q, want %q",
+				capturedCodeVerifier, got, redirectChallenge)
+		}
+	})
+
+	t.Run("PKCE params absent when disabled", func(t *testing.T) {
+		prvNoPKCE, err := NewIdentityProvider(&Config{
+			Name:                  "contoso2",
+			Realm:                 "contoso2",
+			Driver:                "generic",
+			ClientID:              "foo",
+			ClientSecret:          "bar",
+			BaseAuthURL:           ts.URL,
+			MetadataURL:           ts.URL + "/.well-known/openid-configuration",
+			TLSInsecureSkipVerify: true,
+			PKCEDisabled:          true,
+		}, logger)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := prvNoPKCE.Configure(); err != nil {
+			t.Fatal(err)
+		}
+
+		reqURL, _ := url.Parse(
+			"https://auth.example.com/callback?redirect_url=https%3A%2F%2Fauth.example.com%2Flogin",
+		)
+		r := &requests.Request{
+			ID: "test-3",
+			Upstream: requests.Upstream{
+				Request:   &http.Request{URL: reqURL},
+				BaseURL:   "https://auth.example.com",
+				BasePath:  "/",
+				Method:    "oauth2",
+				Realm:     "contoso2",
+				SessionID: "session-3",
+			},
+		}
+
+		if err := prvNoPKCE.Authenticate(r); err != nil {
+			t.Fatalf("Authenticate returned unexpected error: %v", err)
+		}
+		if r.Response.Code != http.StatusFound {
+			t.Fatalf("expected response code 302, got %d", r.Response.Code)
+		}
+
+		parsed, err := url.Parse(r.Response.RedirectURL)
+		if err != nil {
+			t.Fatalf("failed to parse redirect URL: %v", err)
+		}
+		q := parsed.Query()
+
+		if v := q.Get("code_challenge"); v != "" {
+			t.Errorf("code_challenge should be absent when PKCE is disabled, got %q", v)
+		}
+		if v := q.Get("code_challenge_method"); v != "" {
+			t.Errorf("code_challenge_method should be absent when PKCE is disabled, got %q", v)
+		}
+	})
 }

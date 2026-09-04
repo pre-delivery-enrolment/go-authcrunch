@@ -96,6 +96,7 @@ func (cfg *IdentityProviderConfig) Validate() error {
 			"jwks_keys",
 			"tls_insecure_skip_verify",
 			"email_claim_check_disabled",
+			"pkce_disabled",
 			"login_icon",
 			"user_info_fields",
 			"user_info_roles_field_name",

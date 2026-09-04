@@ -19,6 +19,7 @@ import (
 	jwtlib "github.com/golang-jwt/jwt/v4"
 	"github.com/greenpau/go-authcrunch/pkg/errors"
 	"github.com/greenpau/go-authcrunch/pkg/kms"
+	"go.uber.org/zap"
 	"strings"
 )
 
@@ -84,6 +85,17 @@ func (b *IdentityProvider) validateAccessToken(state string, data map[string]int
 		return nil, errors.ErrIdentityProviderOAuthInvalidToken.WithArgs(b.config.IdentityTokenName, tokenString)
 	}
 	claims := token.Claims.(jwtlib.MapClaims)
+
+	claimKeys := make([]string, 0, len(claims))
+	for k := range claims {
+		claimKeys = append(claimKeys, k)
+	}
+	b.logger.Info(
+		"OAuth 2.0 id_token claims",
+		zap.String("identity_token_name", b.config.IdentityTokenName),
+		zap.Strings("claim_keys", claimKeys),
+	)
+
 	if _, exists := claims["nonce"]; !exists {
 		return nil, errors.ErrIdentityProviderOAuthNonceValidationFailed.WithArgs(b.config.IdentityTokenName, "nonce not found")
 	}
@@ -92,7 +104,14 @@ func (b *IdentityProvider) validateAccessToken(state string, data map[string]int
 	}
 
 	if !b.disableEmailClaimCheck {
-		if _, exists := claims["email"]; !exists {
+		_, hasEmail := claims["email"]
+		_, hasCariadEmail := claims["cariad_email"]
+		if !hasEmail && !hasCariadEmail {
+			b.logger.Warn(
+				"OAuth 2.0 id_token missing email claim",
+				zap.String("identity_token_name", b.config.IdentityTokenName),
+				zap.Strings("available_claims", claimKeys),
+			)
 			return nil, errors.ErrIdentityProviderOAuthEmailNotFound.WithArgs(b.config.IdentityTokenName)
 		}
 	}
@@ -103,6 +122,13 @@ func (b *IdentityProvider) validateAccessToken(state string, data map[string]int
 			continue
 		}
 		m[k] = claims[k]
+	}
+
+	// Normalize cariad_email → email when the standard claim is absent.
+	if _, exists := m["email"]; !exists {
+		if v, exists := claims["cariad_email"]; exists {
+			m["email"] = v
+		}
 	}
 
 	if _, exists := m["name"]; !exists {
