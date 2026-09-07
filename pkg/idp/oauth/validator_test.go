@@ -17,12 +17,80 @@ package oauth
 import (
 	"crypto/rand"
 	"crypto/rsa"
+	"encoding/base64"
+	"encoding/json"
 	"testing"
 	"time"
 
 	jwtlib "github.com/golang-jwt/jwt/v5"
 	logutil "github.com/greenpau/go-authcrunch/pkg/util/log"
 )
+
+func makeTestJWT(t *testing.T, claims map[string]interface{}) string {
+	t.Helper()
+	header := base64.RawURLEncoding.EncodeToString([]byte(`{"alg":"RS256","typ":"JWT"}`))
+	payloadJSON, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("failed to marshal claims: %v", err)
+	}
+	payload := base64.RawURLEncoding.EncodeToString(payloadJSON)
+	return header + "." + payload + ".sig"
+}
+
+func TestIsJWTCode(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{
+			name: "jtt authorization_code returns false",
+			input: makeTestJWT(t, map[string]interface{}{
+				"sub": "user1",
+				"jtt": "authorization_code",
+				"iat": 1234567890,
+			}),
+			want: false,
+		},
+		{
+			name: "no jtt claim returns true",
+			input: makeTestJWT(t, map[string]interface{}{
+				"sub":   "user1",
+				"email": "test@example.com",
+				"iat":   1234567890,
+			}),
+			want: true,
+		},
+		{
+			name: "jtt access_token returns true",
+			input: makeTestJWT(t, map[string]interface{}{
+				"sub": "user1",
+				"jtt": "access_token",
+				"iat": 1234567890,
+			}),
+			want: true,
+		},
+		{
+			name:  "non-JWT string returns false",
+			input: "not-a-jwt-at-all",
+			want:  false,
+		},
+		{
+			name:  "malformed JWT with invalid base64 payload returns false",
+			input: "header.!!!invalid-base64!!!.signature",
+			want:  false,
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := isJWTCode(tc.input)
+			if got != tc.want {
+				t.Errorf("isJWTCode(%q) = %v, want %v", tc.input, got, tc.want)
+			}
+		})
+	}
+}
 
 func TestValidateAccessTokenCariadEmail(t *testing.T) {
 	pk, err := rsa.GenerateKey(rand.Reader, 2048)

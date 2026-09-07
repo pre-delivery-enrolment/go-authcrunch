@@ -47,7 +47,7 @@ func (b *IdentityProvider) validateAccessToken(state string, data map[string]int
 	}
 
 	if payload, parseErr := kms.ParsePayloadFromToken(tokenString); parseErr != nil {
-		b.logger.Warn(
+		b.logger.Debug(
 			"failed decoding JWT payload for diagnostics",
 			zap.String("provider", b.config.Name),
 			zap.String("realm", b.config.Realm),
@@ -57,14 +57,14 @@ func (b *IdentityProvider) validateAccessToken(state string, data map[string]int
 	} else {
 		now := time.Now().Unix()
 		if iatRaw, exists := payload["iat"]; !exists {
-			b.logger.Warn(
+			b.logger.Debug(
 				"JWT payload missing iat claim for diagnostics",
 				zap.String("provider", b.config.Name),
 				zap.String("realm", b.config.Realm),
 				zap.String("token_name", b.config.IdentityTokenName),
 			)
 		} else if iatFloat, ok := iatRaw.(float64); !ok {
-			b.logger.Warn(
+			b.logger.Debug(
 				"JWT payload iat claim is not a number",
 				zap.String("provider", b.config.Name),
 				zap.String("realm", b.config.Realm),
