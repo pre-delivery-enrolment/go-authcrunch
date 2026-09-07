@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/greenpau/go-authcrunch/pkg/errors"
+	"github.com/greenpau/go-authcrunch/pkg/kms"
 	"github.com/greenpau/go-authcrunch/pkg/requests"
 	"github.com/greenpau/go-authcrunch/pkg/util"
 
@@ -113,7 +114,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 				// The authorization server returned a JWT directly in the code param.
 				// Validate it without a token exchange.
 				b.logger.Info(
-					"OAuth 2.0 code detected as JWT, skipping token exchange",
+					"OAuth 2.0 code detected as identity token JWT, skipping token exchange",
 					zap.String("session_id", r.Upstream.SessionID),
 					zap.String("request_id", r.ID),
 				)
@@ -337,9 +338,29 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 	return nil
 }
 
-// isJWTCode reports whether s is a JWT (three dot-separated base64url segments).
+// isJWTCode reports whether s is a JWT that can be used directly as an identity
+// token (i.e., it is not merely an authorization code encoded as a JWT).
+// Some identity providers encode authorization codes as JWTs — those must still
+// go through the token exchange. We detect them by checking for the "jtt" claim
+// with value "authorization_code".
 func isJWTCode(s string) bool {
-	return strings.Count(s, ".") == 2
+	if strings.Count(s, ".") != 2 {
+		return false
+	}
+	// Decode the JWT payload to check if this is an authorization code.
+	payload, err := kms.ParsePayloadFromToken(s)
+	if err != nil {
+		// If we can't decode it, assume it's not a usable JWT — do the exchange.
+		return false
+	}
+	// If the JWT has a "jtt" (JWT Token Type) claim indicating it's an
+	// authorization code, it must go through the token exchange.
+	if jtt, ok := payload["jtt"]; ok {
+		if jttStr, ok := jtt.(string); ok && jttStr == "authorization_code" {
+			return false
+		}
+	}
+	return true
 }
 
 func (b *IdentityProvider) fetchAccessToken(redirectURI, state, code, codeVerifier string) (map[string]interface{}, error) {
