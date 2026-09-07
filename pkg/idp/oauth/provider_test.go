@@ -19,7 +19,7 @@ import (
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	jwtlib "github.com/golang-jwt/jwt/v4"
+	jwtlib "github.com/golang-jwt/jwt/v5"
 	"github.com/greenpau/go-authcrunch/internal/tests"
 	"github.com/greenpau/go-authcrunch/pkg/errors"
 	"github.com/greenpau/go-authcrunch/pkg/requests"
@@ -122,6 +122,7 @@ func TestNewIdentityProvider(t *testing.T) {
 					"scopes":                   []interface{}{"openid", "email", "profile"},
 					"server_name":              tsURL.Host,
 					"tls_insecure_skip_verify": bool(true),
+					"token_leeway":             float64(30),
 					"login_icon": map[string]interface{}{
 						"background_color": string("#324960"),
 						"class_name":       string("lab la-codepen la-2x"),
@@ -171,6 +172,7 @@ func TestNewIdentityProvider(t *testing.T) {
 					"server_name":               "localhost",
 					"tls_insecure_skip_verify":  true,
 					"key_verification_disabled": true,
+					"token_leeway":              float64(30),
 					"jwks_keys": map[string]interface{}{
 						"87329db33bf": "../../../testdata/oauth/87329db33bf_pub.pem",
 					},
@@ -284,8 +286,8 @@ func TestPKCEFlow(t *testing.T) {
 				"sub":   "test-user",
 				"email": "test@example.com",
 				"nonce": redirectNonce,
-				"iat":   now.Unix(),
-				"exp":   now.Add(time.Hour).Unix(),
+				"iat":   float64(now.Unix()),
+				"exp":   float64(now.Add(time.Hour).Unix()),
 			}
 			idToken := jwtlib.NewWithClaims(jwtlib.SigningMethodRS256, claims)
 			idTokenStr, signErr := idToken.SignedString(pk1)

@@ -16,10 +16,11 @@ package oauth
 
 import (
 	"encoding/json"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"net/url"
 	"path"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -70,7 +71,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 	}
 
 	if stateExists || errorExists || codeExists || accessTokenExists {
-		b.logger.Debug(
+		b.logger.Info(
 			"received OAuth 2.0 response",
 			zap.String("session_id", r.Upstream.SessionID),
 			zap.String("request_id", r.ID),
@@ -88,9 +89,16 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 			if b.state.exists(reqParamsState) {
 				b.state.addCode(reqParamsState, reqParamsCode)
 			} else {
+				b.logger.Warn(
+					"oauth callback rejected: state not found",
+					zap.String("session_id", r.Upstream.SessionID),
+					zap.String("request_id", r.ID),
+					zap.String("state", reqParamsState),
+					zap.String("callback_path", r.Upstream.Request.URL.Path),
+				)
 				return errors.ErrIdentityProviderOauthAuthorizationStateNotFound
 			}
-			b.logger.Debug(
+			b.logger.Info(
 				"received OAuth 2.0 code and state from the authorization server",
 				zap.String("session_id", r.Upstream.SessionID),
 				zap.String("request_id", r.ID),
@@ -104,7 +112,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 			if isJWTCode(reqParamsCode) {
 				// The authorization server returned a JWT directly in the code param.
 				// Validate it without a token exchange.
-				b.logger.Debug(
+				b.logger.Info(
 					"OAuth 2.0 code detected as JWT, skipping token exchange",
 					zap.String("session_id", r.Upstream.SessionID),
 					zap.String("request_id", r.ID),
@@ -118,11 +126,13 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 						"failed validating JWT from code param",
 						zap.String("session_id", r.Upstream.SessionID),
 						zap.String("request_id", r.ID),
+						zap.String("state", reqParamsState),
+						zap.Strings("token_fields", getMapKeys(syntheticToken)),
 						zap.Error(err),
 					)
 					return errors.ErrIdentityProviderOauthValidateAccessTokenFailed.WithArgs(err)
 				}
-				b.logger.Debug(
+				b.logger.Info(
 					"OAuth 2.0 JWT code validated successfully",
 					zap.String("session_id", r.Upstream.SessionID),
 					zap.String("request_id", r.ID),
@@ -135,7 +145,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 			} else {
 				// The authorization server returned an authorization code.
 				// Exchange it for tokens via the token endpoint.
-				b.logger.Debug(
+				b.logger.Info(
 					"OAuth 2.0 code detected as authorization code, performing token exchange",
 					zap.String("session_id", r.Upstream.SessionID),
 					zap.String("request_id", r.ID),
@@ -170,11 +180,11 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 					)
 					return errors.ErrIdentityProviderOauthFetchAccessTokenFailed.WithArgs(err)
 				}
-				b.logger.Debug(
+				b.logger.Info(
 					"received OAuth 2.0 authorization server access token",
 					zap.String("request_id", r.ID),
 				)
-				b.logger.Debug(
+				b.logger.Info(
 					"OAuth 2.0 access token contents",
 					zap.String("request_id", r.ID),
 					zap.Any("token", accessToken),
@@ -189,13 +199,21 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 				default:
 					m, err = b.validateAccessToken(reqParamsState, accessToken)
 					if err != nil {
+						b.logger.Warn(
+							"oauth callback token validation failed",
+							zap.String("session_id", r.Upstream.SessionID),
+							zap.String("request_id", r.ID),
+							zap.String("state", reqParamsState),
+							zap.Strings("token_fields", getMapKeys(accessToken)),
+							zap.Error(err),
+						)
 						return errors.ErrIdentityProviderOauthValidateAccessTokenFailed.WithArgs(err)
 					}
 				}
 
 				// Fetch user info.
 				if err := b.fetchUserInfo(accessToken, m); err != nil {
-					b.logger.Debug(
+					b.logger.Info(
 						"failed fetching user info",
 						zap.String("request_id", r.ID),
 						zap.Error(err),
@@ -204,7 +222,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 
 				// Fetch subsequent user info, e.g. user groups.
 				if err := b.fetchUserGroups(accessToken, m); err != nil {
-					b.logger.Debug(
+					b.logger.Info(
 						"failed fetching user groups",
 						zap.String("request_id", r.ID),
 						zap.Error(err),
@@ -222,7 +240,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 
 			r.Response.Payload = m
 			r.Response.Code = http.StatusOK
-			b.logger.Debug(
+			b.logger.Info(
 				"decoded claims from OAuth 2.0 authorization server access token",
 				zap.String("request_id", r.ID),
 				zap.Any("claims", m),
@@ -247,7 +265,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 				r.Response.IdentityTokenCookie.Payload = reqParamsIDToken
 			}
 
-			b.logger.Debug(
+			b.logger.Info(
 				"decoded claims from OAuth 2.0 authorization server access token",
 				zap.String("request_id", r.ID),
 				zap.Any("claims", m),
@@ -311,7 +329,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 	r.Response.RedirectURL = b.authorizationURL + "?" + params.Encode()
 
 	b.state.add(state, nonce, codeVerifier)
-	b.logger.Debug(
+	b.logger.Info(
 		"redirecting to OAuth 2.0 endpoint",
 		zap.String("request_id", r.ID),
 		zap.String("redirect_url", r.Response.RedirectURL),
@@ -365,13 +383,13 @@ func (b *IdentityProvider) fetchAccessToken(redirectURI, state, code, codeVerifi
 		return nil, err
 	}
 
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
 
-	b.logger.Debug(
+	b.logger.Info(
 		"OAuth 2.0 access token response received",
 		zap.Any("body", respBody),
 		zap.String("redirect_uri", redirectURI),
@@ -382,7 +400,7 @@ func (b *IdentityProvider) fetchAccessToken(redirectURI, state, code, codeVerifi
 		return nil, err
 	}
 
-	b.logger.Debug(
+	b.logger.Info(
 		"OAuth 2.0 access token response decoded",
 		zap.Any("body", data),
 	)
@@ -401,6 +419,24 @@ func (b *IdentityProvider) fetchAccessToken(redirectURI, state, code, codeVerifi
 
 	for k := range b.requiredTokenFields {
 		if _, exists := data[k]; !exists {
+			if k == "id_token" && b.allowIDTokenFallback() {
+				if _, accessTokenExists := data["access_token"]; accessTokenExists {
+					b.logger.Warn(
+						"oauth token response missing id_token, using access_token fallback",
+						zap.String("provider", b.config.Name),
+						zap.String("realm", b.config.Realm),
+						zap.Strings("token_fields", getMapKeys(data)),
+					)
+					continue
+				}
+			}
+			b.logger.Warn(
+				"oauth token response missing required field",
+				zap.String("provider", b.config.Name),
+				zap.String("realm", b.config.Realm),
+				zap.String("missing_field", k),
+				zap.Strings("token_fields", getMapKeys(data)),
+			)
 			return nil, errors.ErrIdentityProviderAuthorizationServerResponseFieldNotFound.WithArgs(k)
 		}
 	}
@@ -440,12 +476,12 @@ func (b *IdentityProvider) fetchFacebookAccessToken(redirectURI, state, code str
 		return nil, err
 	}
 
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
 		return nil, err
 	}
-	b.logger.Debug(
+	b.logger.Info(
 		"OAuth 2.0 access token response received",
 		zap.Any("body", respBody),
 	)
@@ -468,8 +504,50 @@ func (b *IdentityProvider) fetchFacebookAccessToken(redirectURI, state, code str
 
 	for k := range b.requiredTokenFields {
 		if _, exists := data[k]; !exists {
+			if k == "id_token" && b.allowIDTokenFallback() {
+				if _, accessTokenExists := data["access_token"]; accessTokenExists {
+					b.logger.Warn(
+						"oauth token response missing id_token, using access_token fallback",
+						zap.String("provider", b.config.Name),
+						zap.String("realm", b.config.Realm),
+						zap.Strings("token_fields", getMapKeys(data)),
+					)
+					continue
+				}
+			}
+			b.logger.Warn(
+				"oauth token response missing required field",
+				zap.String("provider", b.config.Name),
+				zap.String("realm", b.config.Realm),
+				zap.String("missing_field", k),
+				zap.Strings("token_fields", getMapKeys(data)),
+			)
 			return nil, errors.ErrIdentityProviderAuthorizationServerResponseFieldNotFound.WithArgs(k)
 		}
 	}
 	return data, nil
+}
+
+func (b *IdentityProvider) allowIDTokenFallback() bool {
+	if b.config.Driver != "generic" {
+		return false
+	}
+	providerHints := strings.ToLower(strings.Join([]string{
+		b.config.Name,
+		b.config.Realm,
+		b.config.BaseAuthURL,
+		b.config.MetadataURL,
+		b.authorizationURL,
+		b.tokenURL,
+	}, " "))
+	return strings.Contains(providerHints, "idkit")
+}
+
+func getMapKeys(m map[string]interface{}) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }

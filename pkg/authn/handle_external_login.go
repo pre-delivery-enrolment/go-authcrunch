@@ -43,7 +43,7 @@ func (p *Portal) handleHTTPExternalLogin(ctx context.Context, w http.ResponseWri
 	rr.Upstream.Realm = authRealm
 	rr.Flags.Enabled = true
 
-	p.logger.Debug(
+	p.logger.Info(
 		"External login requested",
 		zap.String("session_id", rr.Upstream.SessionID),
 		zap.String("request_id", rr.ID),
@@ -87,7 +87,7 @@ func (p *Portal) handleHTTPExternalLogin(ctx context.Context, w http.ResponseWri
 			zap.Any("user", rr.Response.Payload),
 		)
 	case http.StatusFound:
-		p.logger.Debug(
+		p.logger.Info(
 			"Redirect to authorization server",
 			zap.String("session_id", rr.Upstream.SessionID),
 			zap.String("request_id", rr.ID),

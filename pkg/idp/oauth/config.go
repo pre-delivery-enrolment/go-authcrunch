@@ -113,6 +113,10 @@ type Config struct {
 	// PKCEDisabled disables PKCE (RFC 7636) for the OAuth 2.0 authorization code flow.
 	// PKCE is enabled by default. Set to true for identity providers that do not support PKCE.
 	PKCEDisabled bool `json:"pkce_disabled,omitempty" xml:"pkce_disabled,omitempty" yaml:"pkce_disabled,omitempty"`
+
+	// TokenLeeway is the number of seconds of clock skew tolerance when validating
+	// token time claims (iat, nbf, exp). Defaults to 30 seconds.
+	TokenLeeway int `json:"token_leeway,omitempty" xml:"token_leeway,omitempty" yaml:"token_leeway,omitempty"`
 }
 
 // Validate validates identity store configuration.
@@ -342,6 +346,10 @@ func (cfg *Config) Validate() error {
 	// Configure default identity token name.
 	if cfg.IdentityTokenCookieEnabled && cfg.IdentityTokenCookieName == "" {
 		cfg.IdentityTokenCookieName = defaultIdentityTokenCookieName
+	}
+
+	if cfg.TokenLeeway == 0 {
+		cfg.TokenLeeway = 30
 	}
 
 	return nil

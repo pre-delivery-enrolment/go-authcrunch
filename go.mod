@@ -7,7 +7,7 @@ require (
 	github.com/emersion/go-sasl v0.0.0-20241020182733-b788ff22d5a6
 	github.com/emersion/go-smtp v0.21.3
 	github.com/go-ldap/ldap/v3 v3.4.10
-	github.com/golang-jwt/jwt/v4 v4.5.2
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/greenpau/versioned v1.0.30
@@ -26,6 +26,7 @@ require (
 	github.com/cpuguy83/go-md2man/v2 v2.0.4 // indirect
 	github.com/crewjam/httperr v0.2.0 // indirect
 	github.com/go-asn1-ber/asn1-ber v1.5.7 // indirect
+	github.com/golang-jwt/jwt/v4 v4.4.3 // indirect
 	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/mattermost/xml-roundtrip-validator v0.1.0 // indirect
 	github.com/pkg/errors v0.9.1 // indirect

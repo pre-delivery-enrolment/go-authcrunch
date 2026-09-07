@@ -15,9 +15,11 @@
 package kms
 
 import (
+	stderrors "errors"
 	"strings"
+	"time"
 
-	jwtlib "github.com/golang-jwt/jwt/v4"
+	jwtlib "github.com/golang-jwt/jwt/v5"
 	"github.com/greenpau/go-authcrunch/pkg/errors"
 	"github.com/greenpau/go-authcrunch/pkg/requests"
 	"github.com/greenpau/go-authcrunch/pkg/user"
@@ -202,8 +204,8 @@ func (ks *CryptoKeyStore) ParseToken(ar *requests.AuthorizationRequest) (*user.U
 				continue
 			}
 		}
-		parsedToken, err := jwtlib.Parse(ar.Token.Payload, k.ProvideKey)
-		if err != nil && !strings.Contains(err.Error(), "is expired") {
+		parsedToken, err := jwtlib.NewParser(jwtlib.WithLeeway(30*time.Second), jwtlib.WithIssuedAt()).Parse(ar.Token.Payload, k.ProvideKey)
+		if err != nil && !stderrors.Is(err, jwtlib.ErrTokenExpired) {
 			continue
 		}
 

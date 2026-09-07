@@ -16,10 +16,13 @@ package oauth
 
 import (
 	"fmt"
-	jwtlib "github.com/golang-jwt/jwt/v4"
+	"strings"
+	"time"
+
+	jwtlib "github.com/golang-jwt/jwt/v5"
 	"github.com/greenpau/go-authcrunch/pkg/errors"
 	"github.com/greenpau/go-authcrunch/pkg/kms"
-	"strings"
+	"go.uber.org/zap"
 )
 
 var (
@@ -34,12 +37,54 @@ var (
 func (b *IdentityProvider) validateAccessToken(state string, data map[string]interface{}) (map[string]interface{}, error) {
 	var tokenString string
 	if v, exists := data[b.config.IdentityTokenName]; exists {
-		tokenString = v.(string)
+		tv, ok := v.(string)
+		if !ok {
+			return nil, errors.ErrIdentityProviderOAuthAccessTokenNotFound.WithArgs(b.config.IdentityTokenName)
+		}
+		tokenString = tv
 	} else {
 		return nil, errors.ErrIdentityProviderOAuthAccessTokenNotFound.WithArgs(b.config.IdentityTokenName)
 	}
 
-	token, err := jwtlib.Parse(tokenString, func(token *jwtlib.Token) (interface{}, error) {
+	if payload, parseErr := kms.ParsePayloadFromToken(tokenString); parseErr != nil {
+		b.logger.Warn(
+			"failed decoding JWT payload for diagnostics",
+			zap.String("provider", b.config.Name),
+			zap.String("realm", b.config.Realm),
+			zap.String("token_name", b.config.IdentityTokenName),
+			zap.Error(parseErr),
+		)
+	} else {
+		now := time.Now().Unix()
+		if iatRaw, exists := payload["iat"]; !exists {
+			b.logger.Warn(
+				"JWT payload missing iat claim for diagnostics",
+				zap.String("provider", b.config.Name),
+				zap.String("realm", b.config.Realm),
+				zap.String("token_name", b.config.IdentityTokenName),
+			)
+		} else if iatFloat, ok := iatRaw.(float64); !ok {
+			b.logger.Warn(
+				"JWT payload iat claim is not a number",
+				zap.String("provider", b.config.Name),
+				zap.String("realm", b.config.Realm),
+				zap.String("token_name", b.config.IdentityTokenName),
+			)
+		} else {
+			iat := int64(iatFloat)
+			b.logger.Info(
+				"OAuth token iat diagnostic",
+				zap.Int64("iat", iat),
+				zap.Int64("time_now", now),
+				zap.Int64("delta_seconds", now-iat),
+				zap.String("provider", b.config.Name),
+				zap.String("realm", b.config.Realm),
+				zap.String("token_name", b.config.IdentityTokenName),
+			)
+		}
+	}
+
+	token, err := jwtlib.NewParser(jwtlib.WithLeeway(b.tokenLeeway), jwtlib.WithIssuedAt()).Parse(tokenString, func(token *jwtlib.Token) (interface{}, error) {
 		switch {
 		case strings.HasPrefix(token.Method.Alg(), "RS"):
 			if _, validMethod := token.Method.(*jwtlib.SigningMethodRSA); !validMethod {
@@ -77,10 +122,17 @@ func (b *IdentityProvider) validateAccessToken(state string, data map[string]int
 	})
 
 	if err != nil {
+		b.logger.Warn(
+			"failed parsing oauth token",
+			zap.String("provider", b.config.Name),
+			zap.String("realm", b.config.Realm),
+			zap.String("token_name", b.config.IdentityTokenName),
+			zap.Error(err),
+		)
 		return nil, errors.ErrIdentityProviderOAuthParseToken.WithArgs(b.config.IdentityTokenName, err)
 	}
 
-	if _, ok := token.Claims.(jwtlib.Claims); !ok && !token.Valid {
+	if !token.Valid {
 		return nil, errors.ErrIdentityProviderOAuthInvalidToken.WithArgs(b.config.IdentityTokenName, tokenString)
 	}
 	claims := token.Claims.(jwtlib.MapClaims)

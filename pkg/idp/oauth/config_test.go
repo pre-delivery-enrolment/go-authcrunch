@@ -61,6 +61,7 @@ func TestValidateConfig(t *testing.T) {
 					BackgroundColor: "#324960",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -94,6 +95,7 @@ func TestValidateConfig(t *testing.T) {
 					Text:            "Facebook",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -123,10 +125,11 @@ func TestValidateConfig(t *testing.T) {
 				LoginIcon: &icons.LoginIcon{
 					ClassName:       "lab la-discord la-2x",
 					Color:           "white",
-					Text: 					 "Discord",
+					Text:            "Discord",
 					BackgroundColor: "#5865f2",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -160,6 +163,7 @@ func TestValidateConfig(t *testing.T) {
 					BackgroundColor: "#324960",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -200,6 +204,7 @@ func TestValidateConfig(t *testing.T) {
 					BackgroundColor: "#324960",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -233,6 +238,7 @@ func TestValidateConfig(t *testing.T) {
 					Text:            "Google",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -267,6 +273,7 @@ func TestValidateConfig(t *testing.T) {
 					Text:            "Github",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -310,6 +317,7 @@ func TestValidateConfig(t *testing.T) {
 					BackgroundColor: "#fc6d26",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -343,6 +351,7 @@ func TestValidateConfig(t *testing.T) {
 					Text:            "Azure",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -387,6 +396,7 @@ func TestValidateConfig(t *testing.T) {
 					BackgroundColor: "#fc6d26",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -615,6 +625,7 @@ func TestValidateConfig(t *testing.T) {
 					BackgroundColor: "#324960",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -651,6 +662,7 @@ func TestValidateConfig(t *testing.T) {
 					BackgroundColor: "#324960",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 		{
@@ -695,6 +707,7 @@ func TestValidateConfig(t *testing.T) {
 					BackgroundColor: "#324960",
 					TextColor:       "#37474f",
 				},
+				TokenLeeway: 30,
 			},
 		},
 	}

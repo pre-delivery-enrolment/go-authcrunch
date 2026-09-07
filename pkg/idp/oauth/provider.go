@@ -21,7 +21,7 @@ import (
 	"github.com/greenpau/go-authcrunch/pkg/errors"
 	"github.com/greenpau/go-authcrunch/pkg/requests"
 	"go.uber.org/zap"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"regexp"
 	"strings"
@@ -34,7 +34,7 @@ const (
 
 // IdentityProvider represents OAuth-based identity provider.
 type IdentityProvider struct {
-	config           *Config `json:"config,omitempty" xml:"config,omitempty" yaml:"config,omitempty"`
+	config           *Config
 	metadata         map[string]interface{}
 	keys             map[string]*JwksKey
 	authorizationURL string
@@ -77,6 +77,7 @@ type IdentityProvider struct {
 	// Disabled the check for the presence of email field in a token.
 	disableEmailClaimCheck bool
 	disablePKCE            bool
+	tokenLeeway            time.Duration
 }
 
 // NewIdentityProvider returns an instance of IdentityProvider.
@@ -156,6 +157,7 @@ func (b *IdentityProvider) Configure() error {
 	if b.config.PKCEDisabled {
 		b.disablePKCE = true
 	}
+	b.tokenLeeway = time.Duration(b.config.TokenLeeway) * time.Second
 	if b.config.KeyVerificationDisabled {
 		b.disableKeyVerification = true
 	}
@@ -367,7 +369,7 @@ func (b *IdentityProvider) fetchMetadataURL() error {
 	if err != nil {
 		return err
 	}
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
 		return err
@@ -430,7 +432,7 @@ func (b *IdentityProvider) fetchKeysURL() error {
 		return err
 	}
 
-	respBody, err := ioutil.ReadAll(resp.Body)
+	respBody, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
 		return err
