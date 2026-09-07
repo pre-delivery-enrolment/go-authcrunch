@@ -326,6 +326,7 @@ func TestPKCEFlow(t *testing.T) {
 	if err := prv.Configure(); err != nil {
 		t.Fatal(err)
 	}
+	prv.disablePKCE = false // Enable PKCE for testing the PKCE flow mechanics
 
 	// redirectState and redirectChallenge are set by sub-test 1 and consumed by
 	// sub-test 2.  Sub-tests run sequentially (no t.Parallel), so plain

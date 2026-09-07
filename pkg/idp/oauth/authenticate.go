@@ -95,7 +95,6 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 				zap.String("session_id", r.Upstream.SessionID),
 				zap.String("request_id", r.ID),
 				zap.String("state", reqParamsState),
-				zap.String("code", reqParamsCode),
 			)
 
 			reqRedirectURI := reqPath + "/authorization-code-callback"
@@ -105,7 +104,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 			if isJWTCode(reqParamsCode) {
 				// The authorization server returned a JWT directly in the code param.
 				// Validate it without a token exchange.
-				b.logger.Info(
+				b.logger.Debug(
 					"OAuth 2.0 code detected as JWT, skipping token exchange",
 					zap.String("session_id", r.Upstream.SessionID),
 					zap.String("request_id", r.ID),
@@ -123,7 +122,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 					)
 					return errors.ErrIdentityProviderOauthValidateAccessTokenFailed.WithArgs(err)
 				}
-				b.logger.Info(
+				b.logger.Debug(
 					"OAuth 2.0 JWT code validated successfully",
 					zap.String("session_id", r.Upstream.SessionID),
 					zap.String("request_id", r.ID),
@@ -136,7 +135,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 			} else {
 				// The authorization server returned an authorization code.
 				// Exchange it for tokens via the token endpoint.
-				b.logger.Info(
+				b.logger.Debug(
 					"OAuth 2.0 code detected as authorization code, performing token exchange",
 					zap.String("session_id", r.Upstream.SessionID),
 					zap.String("request_id", r.ID),
@@ -171,7 +170,7 @@ func (b *IdentityProvider) Authenticate(r *requests.Request) error {
 					)
 					return errors.ErrIdentityProviderOauthFetchAccessTokenFailed.WithArgs(err)
 				}
-				b.logger.Info(
+				b.logger.Debug(
 					"received OAuth 2.0 authorization server access token",
 					zap.String("request_id", r.ID),
 				)
